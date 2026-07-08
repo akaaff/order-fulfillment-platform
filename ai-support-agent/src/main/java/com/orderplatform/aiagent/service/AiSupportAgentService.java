@@ -29,11 +29,13 @@ public class AiSupportAgentService {
 
     /**
      * customerId must already be a trusted, server-resolved identity by the
-     * time it reaches this method - see AssistantController for the current
-     * (temporary, pre-Day-5) caveat on how that trust is established.
+     * time it reaches this method - AssistantController resolves it from the
+     * validated JWT's subject claim, never from client input. rawToken is
+     * the same JWT's raw string form, forwarded to order-service by
+     * OrderTools/OrderServiceClient.
      */
-    public String ask(String customerId, String question) {
-        OrderTools tools = new OrderTools(customerId, orderServiceClient);
+    public String ask(String customerId, String rawToken, String question) {
+        OrderTools tools = new OrderTools(customerId, rawToken, orderServiceClient);
         return chatCaller.call(SYSTEM_PROMPT, question, tools);
     }
 }

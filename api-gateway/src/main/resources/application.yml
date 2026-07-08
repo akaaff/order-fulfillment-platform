@@ -4,6 +4,11 @@ server:
 spring:
   application:
     name: api-gateway
+  security:
+    oauth2:
+      resourceserver:
+        jwt:
+          public-key-location: ${JWT_PUBLIC_KEY_PATH:file:../infra/keys/jwt-public.pem}
   cloud:
     gateway:
       server:
@@ -33,6 +38,18 @@ spring:
                 - Path=/api/assistant/**
               filters:
                 - StripPrefix=1
+
+orderplatform:
+  jwt:
+    private-key-location: ${JWT_PRIVATE_KEY_PATH:file:../infra/keys/jwt-private.pem}
+    issuer: order-fulfillment-platform
+    ttl: PT1H
+  # No web-client exists yet (Day 6) - this is a placeholder origin, tightened
+  # once the actual client's origin is known.
+  cors:
+    allowed-origin: ${WEB_CLIENT_ORIGIN:http://localhost:8085}
+  rate-limit:
+    requests-per-second: 20
 
 management:
   endpoints:

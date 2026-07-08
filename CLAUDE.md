@@ -8,8 +8,8 @@ Event-driven order fulfillment platform (generic e-commerce domain: order intake
 reservation -> fulfillment notification). This is a portfolio build, not a production system —
 the full multi-day build plan (architecture, security posture, day-by-day sequencing) lives at
 `C:\Users\yakra\.claude\plans\rippling-kindling-snowflake.md`. Read it before making architectural
-changes; most of the planned end state (gateway-centralized JWT, minikube deployment, Linkerd mTLS,
-DECISIONS.md) is not built yet.
+changes; most of the planned end state (minikube deployment, Linkerd mTLS, DECISIONS.md, the web
+client) is not built yet.
 
 ## Commands
 
@@ -29,6 +29,14 @@ PATH="$JAVA_HOME/bin:$PATH"
 - Start local infra (Kafka, kafka-ui, Postgres, Couchbase, Elasticsearch): `docker compose -f infra/docker-compose.yml up -d`
   (first run only: copy `infra/.env.example` to `infra/.env` if you want non-default credentials;
   `couchbase-init` bootstraps the cluster/bucket/indexes automatically and is safe to re-run)
+- Generate the JWT signing key pair (first run only, or to invalidate all issued tokens):
+  `sh infra/generate-jwt-keys.sh` — writes `infra/keys/jwt-private.pem`/`jwt-public.pem`, gitignored,
+  never committed. Every service that validates JWTs points at the same public key file via a
+  relative `../infra/keys/jwt-public.pem` path, so it only works when run the standard way
+  (`mvn -pl <module> spring-boot:run` from the repo root).
+- Log in for a bearer token: `curl -X POST http://localhost:8080/auth/login -d '{"customerId":"cust-001"}'`
+  — `cust-001` through `cust-005` are the only seeded demo customers (`DemoCustomerRegistry` in
+  api-gateway); anything else gets a 401. No password — see the Architecture section on why.
 
 Ollama must be running on the host separately (`ollama serve`, or the desktop app) with a
 tool-calling-capable model pulled — `llama3.2:3b` is the default (`OLLAMA_MODEL` env var to
@@ -127,17 +135,27 @@ manual partial update. The full-document path (`operations.save(...)`) doesn't h
 since it goes through the entity mapper on both write and read.
 
 **ai-support-agent** (Spring AI + local Ollama, `llama3.2:3b` by default) exposes
-`POST /assistant/ask {customerId, question}`. **The actual security boundary is in
-`OrderTools`, not the prompt**: a new `OrderTools` instance is constructed per request with
-`customerId` captured in its constructor, and only `orderId`/`status` are parameters the model can
-supply - the model can never control whose orders it's searching, so even a successful prompt
-injection can only change which order/status is queried, never the customer. `getOrderStatus` also
-independently re-checks that the returned order's `customerId` matches, as defense in depth.
-Verified live: cross-customer lookup of a real order ID correctly returns "not found" rather than
-leaking it. **TEMPORARY pre-Day-5 gap**: `customerId` currently comes from the request body, not a
-validated JWT claim (`AssistantController` has a prominent comment on this) - anyone can currently
-claim to be any customer. Do not treat this endpoint as safe to expose beyond localhost until Day 5
-replaces that field with a resolved auth claim.
+`POST /assistant/ask {question}` (no `customerId` field - see JWT section below). **The actual
+security boundary is in `OrderTools`, not the prompt**: a new `OrderTools` instance is constructed
+per request with `customerId` captured in its constructor, and only `orderId`/`status` are
+parameters the model can supply - the model can never control whose orders it's searching, so even
+a successful prompt injection can only change which order/status is queried, never the customer.
+`getOrderStatus` also independently re-checks that the returned order's `customerId` matches, as
+defense in depth. Verified live: cross-customer lookup of a real order ID correctly returns
+"not found" rather than leaking it.
+
+**Token-forwarding gotcha**: `OrderTools` calls order-service via `OrderServiceClient`, which is a
+separate internal HTTP call, not something the gateway's own auth automatically covers. The first
+JWT integration pass forgot this - `OrderServiceClient` called order-service with no
+`Authorization` header at all, order-service's defense-in-depth check correctly rejected it with
+401, and the *tool call itself* failed, which Spring AI surfaced to the model as "no access" - a
+working-as-designed authz failure that looked, on the surface, like a wrong answer. Fixed by
+forwarding the original caller's raw JWT (`Jwt.getTokenValue()`, threaded through
+`AssistantController` → `AiSupportAgentService` → `OrderTools` → `OrderServiceClient`) rather than
+minting a separate service-account credential - this preserves "acting on behalf of this specific
+customer" all the way through instead of adding a second, looser trust boundary. If a future tool
+needs to call another service, it needs the same treatment - a service-to-service call is not
+automatically authenticated just because the inbound request was.
 
 `GuardedChatCaller` wraps every Ollama call with a Resilience4j `CircuitBreaker` + `TimeLimiter`
 (`resilience4j.circuitbreaker.instances.ollama` / `resilience4j.timelimiter.instances.ollama` in
@@ -156,7 +174,36 @@ don't add a resilience4j dependency anywhere without that BOM already covering i
 `spring-cloud-gateway-server` is deprecated as of the 2025.0.x train). Routes live under
 `spring.cloud.gateway.server.webflux.routes` (not the older `spring.cloud.gateway.routes` key). It
 strips the `/api` prefix and proxies to each service via a `*_SERVICE_URL` env var, defaulting to
-localhost for local dev.
+localhost for local dev. Its filter/route Java API (`GlobalFilter`, `GatewayFilterChain`, etc.) still
+lives under the classic `org.springframework.cloud.gateway.filter` package even after the 2025.0.x
+artifact rename - the actual route/filter implementation is in the (unrenamed)
+`spring-cloud-gateway-server` jar underneath; `-server-webflux` is a thin marker module selecting the
+WebFlux runtime.
+
+**JWT auth**: api-gateway is the only service that issues tokens (`POST /auth/login`, not proxied -
+served directly by api-gateway's own `AuthController`, not routed to a downstream service) and the
+only place with the RSA private key. `DemoCustomerRegistry` seeds 5 fixed demo customer ids
+(`cust-001`..`cust-005`) with no password check at all - this is explicitly not a real identity
+provider. Every other route requires a valid RS256 JWT (`GatewaySecurityConfig`, checked against
+`infra/keys/jwt-public.pem`); order-service and ai-support-agent independently re-validate the same
+token against the same public key as defense in depth, rather than trusting a gateway-forwarded
+header. **The caller's identity always comes from the JWT's `sub` claim
+(`@AuthenticationPrincipal Jwt jwt`, then `jwt.getSubject()`) - never from a request body/query
+param.** This is why `CreateOrderRequest`/`AskRequest` have no `customerId` field, and why
+`GET /orders/search` takes no `customerId` param: as of Day 5 there is nowhere left in the API for a
+client to *claim* an identity, only prove one via the token. `GET /orders/{id}` also now 404s (not
+403, matching the "don't confirm it exists" convention used throughout) when the authenticated
+caller doesn't own the order - a real authz gap that only became fixable once real identity existed.
+
+**Rate limiting**: `RateLimitingGlobalFilter` (api-gateway) enforces a fixed per-IP, per-second
+budget using Resilience4j's `RateLimiter` directly (not Spring Cloud Gateway's built-in
+`RequestRateLimiter`, which is Redis-coupled) - fully in-memory, correct for one gateway instance,
+and explicitly not something a scaled-out gateway could rely on without a shared store. Verified
+live: 40 concurrent requests against a 20/sec budget produced 429s once the budget was exceeded.
+
+**CORS**: locked to a single configurable origin (`orderplatform.cors.allowed-origin`, currently a
+placeholder `http://localhost:8085` since the Day 6 web client doesn't exist yet) rather than left
+open - update this the moment the real client's origin is known.
 
 ## Conventions to keep consistent
 

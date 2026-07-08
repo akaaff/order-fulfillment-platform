@@ -10,10 +10,11 @@ import com.orderplatform.order.search.OrderSearchDocument;
 import com.orderplatform.order.search.OrderSearchService;
 import com.orderplatform.order.service.OrderCreationService;
 import jakarta.validation.Valid;
-import jakarta.validation.constraints.NotBlank;
 import org.springframework.format.annotation.DateTimeFormat;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
+import org.springframework.security.core.annotation.AuthenticationPrincipal;
+import org.springframework.security.oauth2.jwt.Jwt;
 import org.springframework.validation.annotation.Validated;
 import org.springframework.web.bind.annotation.*;
 
@@ -26,6 +27,12 @@ import java.util.UUID;
  * caller's perspective - the response reflects PENDING status only; the
  * eventual CONFIRMED/CANCELLED outcome arrives asynchronously via Kafka and
  * is only visible on a follow-up GET or search.
+ *
+ * <p>Every endpoint here derives the caller's identity from the validated
+ * JWT's subject claim (injected via {@code @AuthenticationPrincipal Jwt}) -
+ * never from a client-supplied field. This is what actually makes the order
+ * search and ownership checks trustworthy; a request body/query param
+ * customerId would just be the caller's word for it.
  */
 @Validated
 @RestController
@@ -47,36 +54,38 @@ public class OrderController {
     }
 
     @PostMapping
-    public ResponseEntity<OrderResponse> createOrder(@Valid @RequestBody CreateOrderRequest request) {
+    public ResponseEntity<OrderResponse> createOrder(
+            @AuthenticationPrincipal Jwt jwt,
+            @Valid @RequestBody CreateOrderRequest request
+    ) {
         List<OrderLine> lines = request.lines().stream()
                 .map(line -> new OrderLine(line.sku(), line.quantity()))
                 .toList();
 
-        Order order = orderCreationService.createOrder(request.customerId(), lines);
+        Order order = orderCreationService.createOrder(jwt.getSubject(), lines);
 
         return ResponseEntity.status(HttpStatus.ACCEPTED).body(OrderResponse.from(order));
     }
 
     @GetMapping("/{orderId}")
-    public ResponseEntity<OrderResponse> getOrder(@PathVariable UUID orderId) {
+    public ResponseEntity<OrderResponse> getOrder(@AuthenticationPrincipal Jwt jwt, @PathVariable UUID orderId) {
         return orderRepository.findById(orderId)
+                // 404, not 403, for a wrong-owner order - same "don't confirm
+                // it exists" rule the AI agent's tools follow.
+                .filter(order -> jwt.getSubject().equals(order.customerId()))
                 .map(OrderResponse::from)
                 .map(ResponseEntity::ok)
                 .orElseGet(() -> ResponseEntity.notFound().build());
     }
 
-    /**
-     * customerId is required (not optional) so this can never become an
-     * unscoped, cross-customer search - see OrderSearchService.
-     */
     @GetMapping("/search")
     public List<OrderSearchDocument> search(
-            @RequestParam @NotBlank String customerId,
+            @AuthenticationPrincipal Jwt jwt,
             @RequestParam(required = false) OrderStatus status,
             @RequestParam(required = false) @DateTimeFormat(iso = DateTimeFormat.ISO.DATE_TIME) Instant from,
             @RequestParam(required = false) @DateTimeFormat(iso = DateTimeFormat.ISO.DATE_TIME) Instant to
     ) {
         String statusFilter = status == null ? null : status.name();
-        return orderSearchService.search(customerId, statusFilter, from, to);
+        return orderSearchService.search(jwt.getSubject(), statusFilter, from, to);
     }
 }

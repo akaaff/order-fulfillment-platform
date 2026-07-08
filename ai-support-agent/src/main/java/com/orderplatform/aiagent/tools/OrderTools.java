@@ -19,22 +19,26 @@ import java.util.stream.Collectors;
  * customer's conversation can't be tricked into leaking another customer's
  * orders. getOrderStatus double-checks ownership itself as a second layer,
  * in case a future refactor ever adds a tool that skips searchMyOrders'
- * customerId-scoped query entirely.
+ * customerId-scoped query entirely. rawToken is the caller's own JWT,
+ * forwarded to order-service so its defense-in-depth auth check and
+ * JWT-derived customerId scoping see a real, valid token for this request.
  */
 public class OrderTools {
 
     private final String customerId;
+    private final String rawToken;
     private final OrderServiceClient orderServiceClient;
 
-    public OrderTools(String customerId, OrderServiceClient orderServiceClient) {
+    public OrderTools(String customerId, String rawToken, OrderServiceClient orderServiceClient) {
         this.customerId = customerId;
+        this.rawToken = rawToken;
         this.orderServiceClient = orderServiceClient;
     }
 
     @Tool(description = "Get the current status of one of the caller's own orders by its order ID. "
             + "Returns a not-found message if the order does not exist or does not belong to the caller.")
     public String getOrderStatus(@ToolParam(description = "The order ID (UUID) to look up") String orderId) {
-        return orderServiceClient.findById(orderId)
+        return orderServiceClient.findById(orderId, rawToken)
                 .filter(order -> customerId.equals(order.customerId()))
                 .map(this::describe)
                 .orElse("No order found with that ID for this customer.");
@@ -46,7 +50,7 @@ public class OrderTools {
             @ToolParam(description = "Optional status filter: PENDING, CONFIRMED, or CANCELLED. Blank for all.", required = false)
             String status
     ) {
-        List<OrderSearchResult> results = orderServiceClient.search(customerId, status);
+        List<OrderSearchResult> results = orderServiceClient.search(status, rawToken);
         if (results.isEmpty()) {
             return "No orders found.";
         }

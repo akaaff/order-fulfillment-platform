@@ -10,6 +10,13 @@ spring:
     password: ${COUCHBASE_ADMIN_PASSWORD:devpassword}
   elasticsearch:
     uris: ${ELASTICSEARCH_URIS:http://localhost:9200}
+  security:
+    oauth2:
+      resourceserver:
+        jwt:
+          # Same key pair api-gateway signs with - defense-in-depth
+          # re-validation, not a second, independent identity provider.
+          public-key-location: ${JWT_PUBLIC_KEY_PATH:file:../infra/keys/jwt-public.pem}
   kafka:
     bootstrap-servers: ${KAFKA_BOOTSTRAP_SERVERS:localhost:9092}
     producer:

@@ -4,6 +4,11 @@ server:
 spring:
   application:
     name: ai-support-agent
+  security:
+    oauth2:
+      resourceserver:
+        jwt:
+          public-key-location: ${JWT_PUBLIC_KEY_PATH:file:../infra/keys/jwt-public.pem}
   ai:
     ollama:
       # Ollama runs on the host, not in a container - see the Day 7 minikube

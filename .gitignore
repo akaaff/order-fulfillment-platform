@@ -12,4 +12,6 @@ target/
 .env.*
 !.env.example
 
+infra/keys/
+
 *.log
