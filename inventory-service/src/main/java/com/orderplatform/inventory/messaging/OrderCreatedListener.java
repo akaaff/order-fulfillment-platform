@@ -2,8 +2,7 @@ package com.orderplatform.inventory.messaging;
 
 import com.orderplatform.events.EventTopics;
 import com.orderplatform.events.OrderCreated;
-import com.orderplatform.inventory.service.InventoryReservationService;
-import com.orderplatform.inventory.service.ReservationResult;
+import com.orderplatform.inventory.service.InventoryOrderProcessor;
 import org.springframework.kafka.annotation.KafkaListener;
 import org.springframework.stereotype.Component;
 
@@ -11,21 +10,14 @@ import org.springframework.stereotype.Component;
 @Component
 public class OrderCreatedListener {
 
-    private final InventoryReservationService reservationService;
-    private final InventoryEventPublisher publisher;
+    private final InventoryOrderProcessor processor;
 
-    public OrderCreatedListener(InventoryReservationService reservationService, InventoryEventPublisher publisher) {
-        this.reservationService = reservationService;
-        this.publisher = publisher;
+    public OrderCreatedListener(InventoryOrderProcessor processor) {
+        this.processor = processor;
     }
 
     @KafkaListener(topics = EventTopics.ORDER_CREATED, groupId = "inventory-service")
     public void onOrderCreated(OrderCreated event) {
-        ReservationResult result = reservationService.reserve(event.lines());
-        if (result.reserved()) {
-            publisher.publishReserved(event.orderId());
-        } else {
-            publisher.publishRejected(event.orderId(), result.rejectionReason());
-        }
+        processor.process(event);
     }
 }

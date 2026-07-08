@@ -8,9 +8,8 @@ Event-driven order fulfillment platform (generic e-commerce domain: order intake
 reservation -> fulfillment notification). This is a portfolio build, not a production system —
 the full multi-day build plan (architecture, security posture, day-by-day sequencing) lives at
 `C:\Users\yakra\.claude\plans\rippling-kindling-snowflake.md`. Read it before making architectural
-changes; most of the planned end state (gateway-centralized JWT, Couchbase/Postgres persistence,
-Elasticsearch search, the Ollama-backed AI agent, minikube deployment, Linkerd mTLS, DECISIONS.md)
-is not built yet.
+changes; most of the planned end state (gateway-centralized JWT, Elasticsearch search, the
+Ollama-backed AI agent, minikube deployment, Linkerd mTLS, DECISIONS.md) is not built yet.
 
 ## Commands
 
@@ -27,11 +26,14 @@ PATH="$JAVA_HOME/bin:$PATH"
 - Run all tests: `mvn test`
 - Run a single test class: `mvn -pl <module> test -Dtest=ClassName`
 - Run one service: `mvn -pl <module> spring-boot:run` (e.g. `-pl order-service`)
-- Start local infra (Kafka + kafka-ui): `docker compose -f infra/docker-compose.yml up -d`
+- Start local infra (Kafka, kafka-ui, Postgres, Couchbase): `docker compose -f infra/docker-compose.yml up -d`
+  (first run only: copy `infra/.env.example` to `infra/.env` if you want non-default credentials;
+  `couchbase-init` bootstraps the cluster/bucket/indexes automatically and is safe to re-run)
 
 Local ports: api-gateway `8080`, order-service `8081`, inventory-service `8082`,
 notification-service `8083`, ai-support-agent `8084` (scaffold only so far), kafka-ui `8090`,
-Kafka broker `9092`. All external traffic is meant to go through the gateway
+Kafka broker `9092`, Postgres `5433` (mapped off the default 5432 to avoid clashing with any other
+local Postgres), Couchbase console `8091`. All external traffic is meant to go through the gateway
 (`/api/orders/**`, `/api/inventory/**`, `/api/notifications/**`), not directly to a service port.
 
 ## Architecture
@@ -68,14 +70,39 @@ consumer.
 `InventoryReservationService`) / `messaging` (Kafka listeners/publishers) / `api` (REST controllers +
 DTOs) / `config` (Kafka topic declarations).
 
-**Persistence is currently in-memory and a known placeholder** — `OrderRepository`,
-`StockRepository`, and `NotificationRepository` are all `ConcurrentHashMap`-backed. The build plan
-replaces these with Couchbase (orders) and Postgres with optimistic locking (inventory); don't treat
-the current repositories as the intended final design.
+**Persistence**: order-service uses Couchbase (bucket `orders`, single collection, documents keyed
+`order::<id>`/`outbox::<id>`/`processed::<id>` and distinguished by key prefix rather than a
+per-document `type` field); inventory-service uses Postgres via Flyway-managed migrations
+(`db/migration/V*__*.sql`) with JPA/Hibernate. `notification-service` is still an in-memory
+`ConcurrentHashMap` — that one's a deliberate simplification, not a placeholder awaiting a Day 2-style
+upgrade (nothing in the plan calls for giving it a real store).
 
-**Inventory reservation** (`InventoryReservationService.reserve`) is all-or-nothing across order
-lines: if any line fails, everything already reserved for that order is released before the
-rejection is returned.
+**Outbox pattern, implemented two different ways on purpose**: inventory-service uses the classic
+relational outbox (an `outbox_event` table written in the same DB transaction as the stock update,
+relayed by a poller); order-service uses Couchbase's native multi-document ACID transactions
+(`cluster.transactions().run(ctx -> ...)`) to write the `Order` document and its outbox document
+atomically instead. Both solve the same dual-write problem; comparing the two approaches is
+deliberate ADR material, not accidental inconsistency. In both services, only the outbox relay
+(`OutboxRelay`/`OutboxPoller` in inventory-service, `OutboxRelay` in order-service) actually calls
+`KafkaTemplate` — domain code never publishes to Kafka directly.
+
+**Idempotent consumption**: inventory-service checks a `processed_event` table (unique on Kafka
+event id) before reserving stock; order-service checks a `processed::<eventId>` Couchbase document
+inside the same transaction as the status update. Either way, a redelivered Kafka message becomes a
+no-op rather than double-applying an effect.
+
+**Inventory reservation** (`InventoryReservationService.reserveLines`) is all-or-nothing across order
+lines and runs in its own `REQUIRES_NEW` transaction: a failure on any line rolls back that whole
+nested transaction, so the database itself undoes any earlier lines already decremented in the same
+call — no manual compensating-release logic. Concurrent reservations against the same sku surface as
+`ObjectOptimisticLockingFailureException` (via `StockItem`'s `@Version` column);
+`InventoryOrderProcessor` retries up to 3 times before giving up.
+
+**Spring `@Transactional` self-invocation gotcha**: `OutboxRelay`/`OutboxPoller` in inventory-service
+are deliberately two separate beans, not one class with the scheduled method calling a `@Transactional`
+method on itself — a self-invocation bypasses Spring's transactional proxy entirely and silently runs
+with no transaction (this broke the pessimistic-locked outbox query once already; don't reintroduce
+it by merging them back into one class).
 
 **api-gateway** runs Spring Cloud Gateway on WebFlux via `spring-cloud-starter-gateway-server-webflux`
 — the current non-deprecated artifact (the older `spring-cloud-starter-gateway` /
@@ -97,8 +124,8 @@ localhost for local dev.
 - Constructor injection only — no field injection.
 - DTOs and Kafka events are Java `record`s.
 - Bean Validation (`jakarta.validation`) enforced at the REST boundary; a `@RestControllerAdvice`
-  (`GlobalExceptionHandler`) returns field-level messages on validation failures and a generic
-  message with no stack trace on anything else. Known gap: it currently also swallows Spring's
-  "no handler found" case as a 500 instead of a 404 — worth fixing rather than copying elsewhere.
+  (`GlobalExceptionHandler`) returns field-level messages on validation failures, a 404 for
+  `NoResourceFoundException` (unmatched routes), and a generic message with no stack trace on
+  anything else.
 - No `:latest` image tags anywhere in `infra/docker-compose.yml` — every image is pinned to a
   specific version.

@@ -4,6 +4,17 @@ server:
 spring:
   application:
     name: inventory-service
+  datasource:
+    url: jdbc:postgresql://${POSTGRES_HOST:localhost}:${POSTGRES_PORT:5433}/${POSTGRES_DB:inventory}
+    username: ${POSTGRES_USER:inventory}
+    password: ${POSTGRES_PASSWORD:devpassword}
+  jpa:
+    # Flyway owns the schema; Hibernate only validates it matches at startup.
+    hibernate:
+      ddl-auto: validate
+    open-in-view: false
+  flyway:
+    enabled: true
   kafka:
     bootstrap-servers: ${KAFKA_BOOTSTRAP_SERVERS:localhost:9092}
     producer:

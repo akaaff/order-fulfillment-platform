@@ -7,6 +7,7 @@ import org.springframework.http.ResponseEntity;
 import org.springframework.web.bind.MethodArgumentNotValidException;
 import org.springframework.web.bind.annotation.ExceptionHandler;
 import org.springframework.web.bind.annotation.RestControllerAdvice;
+import org.springframework.web.servlet.resource.NoResourceFoundException;
 
 import java.time.Instant;
 import java.util.LinkedHashMap;
@@ -15,10 +16,6 @@ import java.util.Map;
 /**
  * Keeps error responses free of stack traces / internal details -
  * only field-level validation messages are ever returned to the client.
- *
- * <p>Known gap: the catch-all {@link #handleUnexpected} also swallows Spring's
- * "no handler found" case (e.g. GET /orders with no id) as a 500 instead of a
- * 404 - not yet fixed.
  */
 @RestControllerAdvice
 public class GlobalExceptionHandler {
@@ -37,6 +34,17 @@ public class GlobalExceptionHandler {
         body.put("errors", fieldErrors);
 
         return ResponseEntity.badRequest().body(body);
+    }
+
+    /** Spring's default fallback for any request that matches no handler and no static resource. */
+    @ExceptionHandler(NoResourceFoundException.class)
+    public ResponseEntity<Map<String, Object>> handleNotFound(NoResourceFoundException ex) {
+        Map<String, Object> body = new LinkedHashMap<>();
+        body.put("timestamp", Instant.now());
+        body.put("status", HttpStatus.NOT_FOUND.value());
+        body.put("error", "Not found");
+
+        return ResponseEntity.status(HttpStatus.NOT_FOUND).body(body);
     }
 
     @ExceptionHandler(Exception.class)

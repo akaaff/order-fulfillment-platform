@@ -4,14 +4,13 @@ import com.orderplatform.events.OrderLine;
 import com.orderplatform.order.api.dto.CreateOrderRequest;
 import com.orderplatform.order.api.dto.OrderResponse;
 import com.orderplatform.order.domain.Order;
-import com.orderplatform.order.messaging.OrderEventPublisher;
 import com.orderplatform.order.repository.OrderRepository;
+import com.orderplatform.order.service.OrderCreationService;
 import jakarta.validation.Valid;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
 import org.springframework.web.bind.annotation.*;
 
-import java.time.Instant;
 import java.util.List;
 import java.util.UUID;
 
@@ -26,11 +25,11 @@ import java.util.UUID;
 public class OrderController {
 
     private final OrderRepository orderRepository;
-    private final OrderEventPublisher eventPublisher;
+    private final OrderCreationService orderCreationService;
 
-    public OrderController(OrderRepository orderRepository, OrderEventPublisher eventPublisher) {
+    public OrderController(OrderRepository orderRepository, OrderCreationService orderCreationService) {
         this.orderRepository = orderRepository;
-        this.eventPublisher = eventPublisher;
+        this.orderCreationService = orderCreationService;
     }
 
     @PostMapping
@@ -39,9 +38,7 @@ public class OrderController {
                 .map(line -> new OrderLine(line.sku(), line.quantity()))
                 .toList();
 
-        Order order = new Order(UUID.randomUUID(), request.customerId(), lines, Instant.now());
-        orderRepository.save(order);
-        eventPublisher.publishOrderCreated(order);
+        Order order = orderCreationService.createOrder(request.customerId(), lines);
 
         return ResponseEntity.status(HttpStatus.ACCEPTED).body(OrderResponse.from(order));
     }

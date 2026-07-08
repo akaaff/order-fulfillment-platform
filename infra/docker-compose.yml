@@ -32,3 +32,55 @@ services:
       KAFKA_CLUSTERS_0_BOOTSTRAPSERVERS: kafka:29092
     depends_on:
       - kafka
+
+  postgres:
+    image: postgres:17.10-bookworm
+    container_name: order-platform-postgres
+    ports:
+      - "5433:5432"
+    environment:
+      POSTGRES_USER: ${POSTGRES_USER:-inventory}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-devpassword}
+      POSTGRES_DB: ${POSTGRES_DB:-inventory}
+    volumes:
+      - postgres-data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U ${POSTGRES_USER:-inventory} -d ${POSTGRES_DB:-inventory}"]
+      interval: 5s
+      timeout: 5s
+      retries: 10
+
+  couchbase:
+    image: couchbase:community-7.6.0
+    container_name: order-platform-couchbase
+    ports:
+      - "8091-8096:8091-8096"
+      - "11210:11210"
+    volumes:
+      - couchbase-data:/opt/couchbase/var
+    healthcheck:
+      test: ["CMD-SHELL", "curl -sf http://localhost:8091/pools || exit 1"]
+      interval: 5s
+      timeout: 5s
+      retries: 20
+
+  # One-shot cluster bootstrap: creates the admin user, the "orders" bucket,
+  # and its indexes. Re-running against an already-initialized cluster is a
+  # harmless no-op (each step's failure is swallowed) so `docker compose up`
+  # stays idempotent across restarts.
+  couchbase-init:
+    image: curlimages/curl:8.21.0
+    container_name: order-platform-couchbase-init
+    depends_on:
+      couchbase:
+        condition: service_healthy
+    environment:
+      COUCHBASE_ADMIN_USER: ${COUCHBASE_ADMIN_USER:-Administrator}
+      COUCHBASE_ADMIN_PASSWORD: ${COUCHBASE_ADMIN_PASSWORD:-devpassword}
+    volumes:
+      - ./couchbase-init.sh:/couchbase-init.sh:ro
+    entrypoint: ["sh", "/couchbase-init.sh"]
+
+volumes:
+  postgres-data:
+  couchbase-data:

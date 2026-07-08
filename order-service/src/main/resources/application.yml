@@ -4,6 +4,10 @@ server:
 spring:
   application:
     name: order-service
+  couchbase:
+    connection-string: ${COUCHBASE_CONNECTION_STRING:couchbase://localhost}
+    username: ${COUCHBASE_ADMIN_USER:Administrator}
+    password: ${COUCHBASE_ADMIN_PASSWORD:devpassword}
   kafka:
     bootstrap-servers: ${KAFKA_BOOTSTRAP_SERVERS:localhost:9092}
     producer:
@@ -19,6 +23,10 @@ spring:
         # Only these packages may be materialized from a Kafka type header - blocks
         # arbitrary-class deserialization if a header is ever forged/poisoned.
         spring.json.trusted.packages: com.orderplatform.events
+
+orderplatform:
+  couchbase:
+    bucket: orders
 
 management:
   endpoints:

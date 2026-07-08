@@ -1,37 +1,43 @@
 package com.orderplatform.inventory.service;
 
 import com.orderplatform.events.OrderLine;
-import com.orderplatform.inventory.repository.StockRepository;
+import com.orderplatform.inventory.domain.StockItem;
+import com.orderplatform.inventory.repository.StockItemRepository;
 import org.springframework.stereotype.Service;
+import org.springframework.transaction.annotation.Propagation;
+import org.springframework.transaction.annotation.Transactional;
 
-import java.util.ArrayList;
 import java.util.List;
 
 @Service
 public class InventoryReservationService {
 
-    private final StockRepository stockRepository;
+    private final StockItemRepository stockItemRepository;
 
-    public InventoryReservationService(StockRepository stockRepository) {
-        this.stockRepository = stockRepository;
+    public InventoryReservationService(StockItemRepository stockItemRepository) {
+        this.stockItemRepository = stockItemRepository;
     }
 
     /**
-     * Reserves every line or none of them - a rejection on any single line
-     * releases whatever was already reserved for this order.
+     * Reserves every line or none of them. Runs in its own transaction
+     * (REQUIRES_NEW) so that when a line fails, the database itself rolls
+     * back whatever earlier lines in this call already decremented - no
+     * manual compensating "release" logic needed, unlike the in-memory
+     * version this replaced. Concurrent reservations against the same sku
+     * surface as ObjectOptimisticLockingFailureException (via StockItem's
+     * @Version column) for the caller to retry.
      */
-    public ReservationResult reserve(List<OrderLine> lines) {
-        List<OrderLine> reservedSoFar = new ArrayList<>();
-
+    @Transactional(propagation = Propagation.REQUIRES_NEW)
+    public void reserveLines(List<OrderLine> lines) {
         for (OrderLine line : lines) {
-            boolean ok = stockRepository.tryReserve(line.sku(), line.quantity());
-            if (!ok) {
-                reservedSoFar.forEach(done -> stockRepository.release(done.sku(), done.quantity()));
-                return ReservationResult.rejected("Insufficient stock for sku " + line.sku());
-            }
-            reservedSoFar.add(line);
-        }
+            StockItem item = stockItemRepository.findById(line.sku())
+                    .orElseThrow(() -> new InsufficientStockException("Unknown sku " + line.sku()));
 
-        return ReservationResult.success();
+            if (item.getQuantity() < line.quantity()) {
+                throw new InsufficientStockException("Insufficient stock for sku " + line.sku());
+            }
+
+            item.setQuantity(item.getQuantity() - line.quantity());
+        }
     }
 }
