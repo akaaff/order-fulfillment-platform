@@ -1,12 +1,15 @@
 package com.orderplatform.order.api;
 
+import jakarta.validation.ConstraintViolationException;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
 import org.springframework.web.bind.MethodArgumentNotValidException;
+import org.springframework.web.bind.MissingServletRequestParameterException;
 import org.springframework.web.bind.annotation.ExceptionHandler;
 import org.springframework.web.bind.annotation.RestControllerAdvice;
+import org.springframework.web.method.annotation.MethodArgumentTypeMismatchException;
 import org.springframework.web.servlet.resource.NoResourceFoundException;
 
 import java.time.Instant;
@@ -32,6 +35,43 @@ public class GlobalExceptionHandler {
         body.put("timestamp", Instant.now());
         body.put("status", HttpStatus.BAD_REQUEST.value());
         body.put("errors", fieldErrors);
+
+        return ResponseEntity.badRequest().body(body);
+    }
+
+    /** Bean Validation on @RequestParam/@PathVariable (e.g. the search endpoint's required customerId) lands here, not in handleValidation. */
+    @ExceptionHandler(ConstraintViolationException.class)
+    public ResponseEntity<Map<String, Object>> handleConstraintViolation(ConstraintViolationException ex) {
+        Map<String, String> violations = new LinkedHashMap<>();
+        ex.getConstraintViolations().forEach(violation ->
+                violations.put(violation.getPropertyPath().toString(), violation.getMessage()));
+
+        Map<String, Object> body = new LinkedHashMap<>();
+        body.put("timestamp", Instant.now());
+        body.put("status", HttpStatus.BAD_REQUEST.value());
+        body.put("errors", violations);
+
+        return ResponseEntity.badRequest().body(body);
+    }
+
+    /** A required @RequestParam (e.g. search's customerId) missing entirely - resolved before Bean Validation even runs, so it's a separate exception type from ConstraintViolationException. */
+    @ExceptionHandler(MissingServletRequestParameterException.class)
+    public ResponseEntity<Map<String, Object>> handleMissingParameter(MissingServletRequestParameterException ex) {
+        Map<String, Object> body = new LinkedHashMap<>();
+        body.put("timestamp", Instant.now());
+        body.put("status", HttpStatus.BAD_REQUEST.value());
+        body.put("error", "Missing required parameter '" + ex.getParameterName() + "'");
+
+        return ResponseEntity.badRequest().body(body);
+    }
+
+    /** e.g. ?status=NOT_A_REAL_STATUS failing to convert to the OrderStatus enum on the search endpoint. */
+    @ExceptionHandler(MethodArgumentTypeMismatchException.class)
+    public ResponseEntity<Map<String, Object>> handleTypeMismatch(MethodArgumentTypeMismatchException ex) {
+        Map<String, Object> body = new LinkedHashMap<>();
+        body.put("timestamp", Instant.now());
+        body.put("status", HttpStatus.BAD_REQUEST.value());
+        body.put("error", "Invalid value for parameter '" + ex.getName() + "'");
 
         return ResponseEntity.badRequest().body(body);
     }

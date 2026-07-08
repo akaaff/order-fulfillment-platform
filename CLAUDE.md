@@ -8,8 +8,8 @@ Event-driven order fulfillment platform (generic e-commerce domain: order intake
 reservation -> fulfillment notification). This is a portfolio build, not a production system —
 the full multi-day build plan (architecture, security posture, day-by-day sequencing) lives at
 `C:\Users\yakra\.claude\plans\rippling-kindling-snowflake.md`. Read it before making architectural
-changes; most of the planned end state (gateway-centralized JWT, Elasticsearch search, the
-Ollama-backed AI agent, minikube deployment, Linkerd mTLS, DECISIONS.md) is not built yet.
+changes; most of the planned end state (gateway-centralized JWT, the Ollama-backed AI agent,
+minikube deployment, Linkerd mTLS, DECISIONS.md) is not built yet.
 
 ## Commands
 
@@ -26,15 +26,16 @@ PATH="$JAVA_HOME/bin:$PATH"
 - Run all tests: `mvn test`
 - Run a single test class: `mvn -pl <module> test -Dtest=ClassName`
 - Run one service: `mvn -pl <module> spring-boot:run` (e.g. `-pl order-service`)
-- Start local infra (Kafka, kafka-ui, Postgres, Couchbase): `docker compose -f infra/docker-compose.yml up -d`
+- Start local infra (Kafka, kafka-ui, Postgres, Couchbase, Elasticsearch): `docker compose -f infra/docker-compose.yml up -d`
   (first run only: copy `infra/.env.example` to `infra/.env` if you want non-default credentials;
   `couchbase-init` bootstraps the cluster/bucket/indexes automatically and is safe to re-run)
 
 Local ports: api-gateway `8080`, order-service `8081`, inventory-service `8082`,
 notification-service `8083`, ai-support-agent `8084` (scaffold only so far), kafka-ui `8090`,
 Kafka broker `9092`, Postgres `5433` (mapped off the default 5432 to avoid clashing with any other
-local Postgres), Couchbase console `8091`. All external traffic is meant to go through the gateway
-(`/api/orders/**`, `/api/inventory/**`, `/api/notifications/**`), not directly to a service port.
+local Postgres), Couchbase console `8091`, Elasticsearch `9200`. All external traffic is meant to go
+through the gateway (`/api/orders/**`, `/api/inventory/**`, `/api/notifications/**`), not directly to
+a service port.
 
 ## Architecture
 
@@ -104,6 +105,23 @@ method on itself — a self-invocation bypasses Spring's transactional proxy ent
 with no transaction (this broke the pessimistic-locked outbox query once already; don't reintroduce
 it by merging them back into one class).
 
+**Order search (CQRS-lite read model)**: `order-service`'s `search` package keeps an Elasticsearch
+index (`OrderSearchDocument`, index `orders`) in sync via `OrderSearchIndexer`, a Kafka consumer in
+its own group (`order-service-search-indexer`) subscribed to `order.created`/`order.confirmed`/
+`order.cancelled` — the same topics order-service itself publishes to via its outbox, consumed a
+second time here. This is eventually consistent with Couchbase (the source of truth) by design; ES
+is never written to from request-handling code. `GET /orders/search` (`OrderSearchService`) requires
+`customerId` (never an unscoped cross-customer query) with optional `status`/`from`/`to` filters,
+capped at 50 results.
+
+**Elasticsearch date field gotcha**: `OrderSearchIndexer`'s status-update path does a partial update
+via a raw `Document` (`Document.create(); doc.put("updatedAt", ...)`), which bypasses Spring Data
+Elasticsearch's own entity-mapping conversion. Writing `Instant.toString()` directly emits nanosecond
+precision when present, which Spring Data ES's own reader can't parse back (`ConversionException` on
+the next search) - always `.truncatedTo(ChronoUnit.MILLIS)` before stringifying an `Instant` for a
+manual partial update. The full-document path (`operations.save(...)`) doesn't have this problem
+since it goes through the entity mapper on both write and read.
+
 **api-gateway** runs Spring Cloud Gateway on WebFlux via `spring-cloud-starter-gateway-server-webflux`
 — the current non-deprecated artifact (the older `spring-cloud-starter-gateway` /
 `spring-cloud-gateway-server` is deprecated as of the 2025.0.x train). Routes live under
@@ -126,6 +144,10 @@ localhost for local dev.
 - Bean Validation (`jakarta.validation`) enforced at the REST boundary; a `@RestControllerAdvice`
   (`GlobalExceptionHandler`) returns field-level messages on validation failures, a 404 for
   `NoResourceFoundException` (unmatched routes), and a generic message with no stack trace on
-  anything else.
+  anything else. `@RequestParam`/`@PathVariable` constraints (needs `@Validated` on the controller
+  class) raise `ConstraintViolationException`, not `MethodArgumentNotValidException` — that's only
+  for `@RequestBody`. A required-but-missing `@RequestParam` is a third, separate exception
+  (`MissingServletRequestParameterException`), and an unparseable enum/type `@RequestParam` is a
+  fourth (`MethodArgumentTypeMismatchException`) — all four are handled distinctly.
 - No `:latest` image tags anywhere in `infra/docker-compose.yml` — every image is pinned to a
   specific version.

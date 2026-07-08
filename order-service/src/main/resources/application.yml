@@ -8,6 +8,8 @@ spring:
     connection-string: ${COUCHBASE_CONNECTION_STRING:couchbase://localhost}
     username: ${COUCHBASE_ADMIN_USER:Administrator}
     password: ${COUCHBASE_ADMIN_PASSWORD:devpassword}
+  elasticsearch:
+    uris: ${ELASTICSEARCH_URIS:http://localhost:9200}
   kafka:
     bootstrap-servers: ${KAFKA_BOOTSTRAP_SERVERS:localhost:9092}
     producer:
