@@ -78,7 +78,13 @@ services:
       COUCHBASE_ADMIN_USER: ${COUCHBASE_ADMIN_USER:-Administrator}
       COUCHBASE_ADMIN_PASSWORD: ${COUCHBASE_ADMIN_PASSWORD:-devpassword}
     volumes:
-      - ./couchbase-init.sh:/couchbase-init.sh:ro
+      # Single source of truth for both environments - k8s/base/'s
+      # configMapGenerator reads this same file (its ConfigMap's data key
+      # doesn't need to match the file's location, so it lives under k8s/base
+      # rather than directly under infra/ to satisfy Kustomize's file-access
+      # sandboxing, which forbids referencing files outside the kustomization
+      # tree).
+      - ./k8s/base/couchbase-init.sh:/couchbase-init.sh:ro
     entrypoint: ["sh", "/couchbase-init.sh"]
 
   elasticsearch:

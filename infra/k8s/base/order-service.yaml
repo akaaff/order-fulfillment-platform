@@ -1,0 +1,80 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: order-service
+  namespace: order-platform
+  labels:
+    app: order-service
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: order-service
+  template:
+    metadata:
+      labels:
+        app: order-service
+    spec:
+      containers:
+        - name: order-service
+          image: order-platform/order-service:local
+          ports:
+            - containerPort: 8081
+          env:
+            - name: COUCHBASE_CONNECTION_STRING
+              value: couchbase://couchbase
+            - name: COUCHBASE_ADMIN_USER
+              valueFrom:
+                secretKeyRef:
+                  name: couchbase-credentials
+                  key: COUCHBASE_ADMIN_USER
+            - name: COUCHBASE_ADMIN_PASSWORD
+              valueFrom:
+                secretKeyRef:
+                  name: couchbase-credentials
+                  key: COUCHBASE_ADMIN_PASSWORD
+            - name: ELASTICSEARCH_URIS
+              value: http://elasticsearch:9200
+            - name: KAFKA_BOOTSTRAP_SERVERS
+              value: kafka:9092
+            - name: JWT_PUBLIC_KEY_PATH
+              value: file:/etc/jwt/jwt-public.pem
+          resources:
+            requests:
+              memory: 320Mi
+              cpu: 150m
+            limits:
+              memory: 448Mi
+              cpu: 500m
+          readinessProbe:
+            httpGet:
+              path: /actuator/health
+              port: 8081
+            initialDelaySeconds: 20
+            periodSeconds: 10
+          livenessProbe:
+            httpGet:
+              path: /actuator/health
+              port: 8081
+            initialDelaySeconds: 40
+            periodSeconds: 15
+          volumeMounts:
+            - name: jwt-keys
+              mountPath: /etc/jwt
+              readOnly: true
+      volumes:
+        - name: jwt-keys
+          secret:
+            secretName: jwt-keys
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: order-service
+  namespace: order-platform
+spec:
+  selector:
+    app: order-service
+  ports:
+    - port: 8081
+      targetPort: 8081

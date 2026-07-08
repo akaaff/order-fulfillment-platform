@@ -1,0 +1,111 @@
+# Single-broker KRaft Kafka, same image as infra/docker-compose.yml. Storage
+# is emptyDir - ephemeral by design for this demo cluster (see CLAUDE.md);
+# a real deployment would use a PersistentVolumeClaim instead.
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: kafka
+  namespace: order-platform
+  labels:
+    app: kafka
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: kafka
+  template:
+    metadata:
+      labels:
+        app: kafka
+    spec:
+      containers:
+        - name: kafka
+          image: apache/kafka:4.3.1
+          ports:
+            - containerPort: 9092
+            - containerPort: 9093
+          env:
+            - name: KAFKA_NODE_ID
+              value: "1"
+            - name: KAFKA_PROCESS_ROLES
+              value: broker,controller
+            - name: KAFKA_LISTENERS
+              value: PLAINTEXT://:9092,CONTROLLER://:9093
+            - name: KAFKA_ADVERTISED_LISTENERS
+              value: PLAINTEXT://kafka:9092
+            - name: KAFKA_LISTENER_SECURITY_PROTOCOL_MAP
+              value: CONTROLLER:PLAINTEXT,PLAINTEXT:PLAINTEXT
+            - name: KAFKA_CONTROLLER_LISTENER_NAMES
+              value: CONTROLLER
+            - name: KAFKA_CONTROLLER_QUORUM_VOTERS
+              value: "1@kafka:9093"
+            - name: KAFKA_INTER_BROKER_LISTENER_NAME
+              value: PLAINTEXT
+            - name: KAFKA_OFFSETS_TOPIC_REPLICATION_FACTOR
+              value: "1"
+            - name: KAFKA_GROUP_INITIAL_REBALANCE_DELAY_MS
+              value: "0"
+            - name: CLUSTER_ID
+              value: "MkU3OEVBNTcwNTJENDM2Qk"
+            - name: KAFKA_HEAP_OPTS
+              value: "-Xms384m -Xmx384m"
+          resources:
+            requests:
+              memory: 384Mi
+              cpu: 150m
+            limits:
+              memory: 512Mi
+              cpu: 500m
+          # A tcpSocket probe, not the seemingly more thorough
+          # kafka-broker-api-versions.sh exec check this replaced: that
+          # script launches its own JVM per invocation, which kept timing
+          # out under node contention even with a generous timeoutSeconds,
+          # causing otherwise-healthy restarts. A bare TCP connect to the
+          # broker port is far cheaper and, for a single-broker demo
+          # cluster, a perfectly adequate proxy for "is Kafka up" - it just
+          # doesn't validate the Kafka wire protocol itself the way the
+          # script did.
+          readinessProbe:
+            tcpSocket:
+              port: 9092
+            initialDelaySeconds: 15
+            periodSeconds: 10
+            failureThreshold: 6
+          livenessProbe:
+            tcpSocket:
+              port: 9092
+            initialDelaySeconds: 30
+            periodSeconds: 20
+            failureThreshold: 6
+          volumeMounts:
+            - name: kafka-data
+              mountPath: /var/lib/kafka/data
+      volumes:
+        - name: kafka-data
+          emptyDir: {}
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: kafka
+  namespace: order-platform
+spec:
+  # Headless (no ClusterIP): a regular Service only routes to Ready pods,
+  # which deadlocks here - this single pod plays both broker and KRaft
+  # controller, so it needs to reach itself via this same Service name for
+  # controller registration *before* it can pass its own readiness probe.
+  # publishNotReadyAddresses is the other half of this fix: even a headless
+  # Service's DNS records default to Ready-only, which would still deadlock -
+  # this makes CoreDNS return the pod's IP for "kafka" immediately, before
+  # its readiness probe has ever passed.
+  clusterIP: None
+  publishNotReadyAddresses: true
+  selector:
+    app: kafka
+  ports:
+    - name: broker
+      port: 9092
+      targetPort: 9092
+    - name: controller
+      port: 9093
+      targetPort: 9093

@@ -1,0 +1,71 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: ai-support-agent
+  namespace: order-platform
+  labels:
+    app: ai-support-agent
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: ai-support-agent
+  template:
+    metadata:
+      labels:
+        app: ai-support-agent
+    spec:
+      containers:
+        - name: ai-support-agent
+          image: order-platform/ai-support-agent:local
+          ports:
+            - containerPort: 8084
+          env:
+            - name: ORDER_SERVICE_URL
+              value: http://order-service:8081
+            # Ollama runs on the host, not in-cluster - LLM inference is heavy
+            # for a laptop cluster. host.minikube.internal is minikube's
+            # docker-driver equivalent of Docker Desktop's host.docker.internal.
+            - name: OLLAMA_BASE_URL
+              value: http://host.minikube.internal:11434
+            - name: JWT_PUBLIC_KEY_PATH
+              value: file:/etc/jwt/jwt-public.pem
+          resources:
+            requests:
+              memory: 256Mi
+              cpu: 100m
+            limits:
+              memory: 384Mi
+              cpu: 500m
+          readinessProbe:
+            httpGet:
+              path: /actuator/health
+              port: 8084
+            initialDelaySeconds: 15
+            periodSeconds: 10
+          livenessProbe:
+            httpGet:
+              path: /actuator/health
+              port: 8084
+            initialDelaySeconds: 30
+            periodSeconds: 15
+          volumeMounts:
+            - name: jwt-keys
+              mountPath: /etc/jwt
+              readOnly: true
+      volumes:
+        - name: jwt-keys
+          secret:
+            secretName: jwt-keys
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: ai-support-agent
+  namespace: order-platform
+spec:
+  selector:
+    app: ai-support-agent
+  ports:
+    - port: 8084
+      targetPort: 8084

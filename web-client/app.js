@@ -1,7 +1,13 @@
 // Demo client - talks only to api-gateway (never a backend service directly).
 // No build step on purpose: this is meant to be a day of work, not a second
 // stack to maintain (see CLAUDE.md).
-const GATEWAY = "http://localhost:8080";
+//
+// Local dev serves this on :8085 via a plain static file server, with
+// api-gateway separately on :8080 - different origin, real CORS. Behind the
+// minikube Ingress, web-client and api-gateway sit on the same host under
+// different paths (/, /api, /auth) - same origin, so the gateway base is
+// just empty and every call becomes a same-origin relative path.
+const GATEWAY = location.port === "8085" ? "http://localhost:8080" : "";
 const KNOWN_SKUS = ["SKU-WIDGET", "SKU-GADGET", "SKU-GIZMO"];
 
 const els = {

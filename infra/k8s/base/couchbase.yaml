@@ -1,0 +1,84 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: couchbase
+  namespace: order-platform
+  labels:
+    app: couchbase
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: couchbase
+  template:
+    metadata:
+      labels:
+        app: couchbase
+    spec:
+      containers:
+        - name: couchbase
+          image: couchbase:community-7.6.0
+          ports:
+            - containerPort: 8091
+            - containerPort: 8092
+            - containerPort: 8093
+            - containerPort: 8094
+            - containerPort: 8095
+            - containerPort: 8096
+            - containerPort: 11210
+          resources:
+            requests:
+              memory: 768Mi
+              cpu: 250m
+            limits:
+              memory: 1200Mi
+              cpu: 750m
+          readinessProbe:
+            tcpSocket:
+              port: 8091
+            initialDelaySeconds: 15
+            periodSeconds: 10
+            failureThreshold: 12
+          livenessProbe:
+            tcpSocket:
+              port: 8091
+            initialDelaySeconds: 30
+            periodSeconds: 20
+            failureThreshold: 10
+          volumeMounts:
+            - name: couchbase-data
+              mountPath: /opt/couchbase/var
+      volumes:
+        - name: couchbase-data
+          emptyDir: {}
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: couchbase
+  namespace: order-platform
+spec:
+  selector:
+    app: couchbase
+  ports:
+    - name: mgmt
+      port: 8091
+      targetPort: 8091
+    - name: views
+      port: 8092
+      targetPort: 8092
+    - name: query
+      port: 8093
+      targetPort: 8093
+    - name: search
+      port: 8094
+      targetPort: 8094
+    - name: analytics
+      port: 8095
+      targetPort: 8095
+    - name: eventing
+      port: 8096
+      targetPort: 8096
+    - name: kv
+      port: 11210
+      targetPort: 11210

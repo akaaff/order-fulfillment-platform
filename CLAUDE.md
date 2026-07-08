@@ -236,6 +236,78 @@ confirmation stayed visible and bled into the next customer's session. Fixed wit
 correctly-scoped API is not the same thing as a correctly-reset UI - check what's still on screen
 after a session boundary, not just what the next network call returns.
 
+## Kubernetes deployment (minikube)
+
+The full stack — all 6 app services plus Kafka, Couchbase, Postgres, and Elasticsearch — runs
+in-cluster on minikube, not just the app services against docker-compose infra. This was a
+deliberate scope choice (the harder path was picked over keeping infra on docker-compose) and it
+surfaced real K8s operational lessons worth knowing before touching `infra/k8s/`.
+
+**Dockerfiles**: a single root `Dockerfile` builds all 6 images via a shared Maven build stage
+(`FROM maven:3.9.16-eclipse-temurin-21-alpine AS build`, not a JDK-only image — the JDK-only alpine
+image has no `mvn` binary) feeding multiple thin `eclipse-temurin:21-jre-alpine` runtime targets,
+one per service, run non-root (`adduser -S app -G app`). Build a single service with
+`docker build --target <service-name> -t <service-name>:latest .` (e.g. `--target order-service`).
+`web-client` gets its own trivial `nginx:alpine` Dockerfile instead, since it's static files, not a
+JVM app.
+
+**Kustomize layout**: `infra/k8s/base/` is registry-agnostic (no `imagePullPolicy`, works against
+any registry); `infra/k8s/overlays/minikube/` adds the one genuinely minikube-specific patch —
+`imagePullPolicy: Never` on the 6 app-service Deployments, via explicit JSON6902 patches, one per
+Deployment name — so images built directly into minikube's internal Docker daemon are used as-is
+rather than pulled from a registry that doesn't exist. Apply with
+`kubectl apply -k infra/k8s/overlays/minikube`. To build images so minikube can see them:
+`eval $(minikube docker-env)` first (must be re-run in every new shell/Bash call — it doesn't
+persist), then the same `docker build --target <service>` commands.
+
+**Secrets**: `infra/k8s/create-secrets.sh` creates the `jwt-keys` (from the same
+`infra/keys/jwt-*.pem` files generated locally), `postgres-credentials`, and
+`couchbase-credentials` K8s Secrets imperatively from local files/literals — never checked into a
+static YAML manifest with embedded values. Run it once per fresh cluster before applying the
+Kustomize overlay.
+
+**Kafka headless-Service deadlock (the trickiest bug here)**: this is a single-pod
+broker+controller (KRaft combined mode), which must reach itself via the `kafka` Service name to
+register as controller — but a normal `ClusterIP` Service only routes to pods that are already
+`Ready`, and the pod can't become `Ready` until that self-connection succeeds. Fixed with two
+changes to the Service, both required: `clusterIP: None` (headless) plus
+`publishNotReadyAddresses: true` (a headless Service's DNS still defaults to Ready-only otherwise).
+Don't "simplify" this back to a normal Service — it will silently deadlock on a fresh cluster.
+
+**Probe lessons (apply to any new stateful workload added here)**:
+- Exec probes (`pg_isready`, `kafka-broker-api-versions.sh`) default to a 1-second timeout, which
+  a busy single-node cluster (concurrent large image pulls) blows through even for a genuinely
+  healthy container — set an explicit `timeoutSeconds`, or better, prefer a `tcpSocket` probe when
+  "is the port accepting connections" is an adequate proxy for health (it is for Kafka here, and
+  it's what replaced the exec probe entirely after even an 8s timeout wasn't enough).
+- Slow-booting containers (Elasticsearch's plugin/security init can take 2+ minutes under
+  contention) need a `startupProbe`, not just a lenient `livenessProbe` — a startupProbe suspends
+  liveness/readiness checks until it first succeeds, which is the only way to avoid killing a
+  container that's still legitimately starting.
+- An OOMKilled container (`kubectl get pod ... -o jsonpath='{.status.containerStatuses[0].lastState.terminated}'`
+  showing `"reason":"OOMKilled"`) means the memory *limit* is below the process's real footprint,
+  not just its heap — Elasticsearch's `-Xmx512m` needed a `1280Mi` limit, not 768Mi, because heap is
+  only part of an ES container's memory (Lucene mmap, Netty buffers, thread stacks add up).
+
+**minikube resource sizing**: `minikube start --memory=X` cannot resize an already-created
+profile — `minikube delete` + recreate is required, which also destroys previously-built images
+(they live in minikube's own internal Docker daemon) and all applied cluster state. Budget for
+this before resizing: re-enable addons (`ingress`), rebuild all 6 images, re-run
+`create-secrets.sh`, and re-apply the Kustomize overlay from scratch.
+
+**Networking from Windows host**: minikube's internal node IP is not directly reachable from the
+Windows host in this setup. Verify Ingress-routed behavior via
+`kubectl port-forward -n ingress-nginx svc/ingress-nginx-controller <local-port>:80` plus
+`curl --resolve order-platform.local:<local-port>:127.0.0.1 http://order-platform.local:<local-port>/...`
+rather than trying to hit the minikube IP or relying on `minikube tunnel` (which needs elevated
+privileges this environment doesn't have).
+
+**NetworkPolicies exist** (`infra/k8s/base/networkpolicies.yaml`, default-deny-ingress plus
+explicit per-relationship allows) **but are not currently enforced** — minikube's default "bridge"
+CNI doesn't implement `NetworkPolicy`. They're written and applied so the intent is documented and
+they'll take effect once a policy-enforcing CNI (e.g. Calico) is installed, deferred to the
+security-hardening pass.
+
 ## Conventions to keep consistent
 
 - **This code is a portfolio artifact meant to be read by strangers (interviewers/reviewers), not

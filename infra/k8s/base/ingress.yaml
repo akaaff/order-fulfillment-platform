@@ -1,0 +1,36 @@
+# Single host, three paths - the same "one door in" story as api-gateway
+# itself: web-client and api-gateway share an origin here, so the browser
+# CORS path web-client/app.js takes for local dev doesn't even apply
+# in-cluster (see app.js's GATEWAY constant).
+apiVersion: networking.k8s.io/v1
+kind: Ingress
+metadata:
+  name: order-platform
+  namespace: order-platform
+spec:
+  ingressClassName: nginx
+  rules:
+    - host: order-platform.local
+      http:
+        paths:
+          - path: /api
+            pathType: Prefix
+            backend:
+              service:
+                name: api-gateway
+                port:
+                  number: 8080
+          - path: /auth
+            pathType: Prefix
+            backend:
+              service:
+                name: api-gateway
+                port:
+                  number: 8080
+          - path: /
+            pathType: Prefix
+            backend:
+              service:
+                name: web-client
+                port:
+                  number: 80

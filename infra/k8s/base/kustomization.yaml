@@ -1,0 +1,27 @@
+apiVersion: kustomize.config.k8s.io/v1beta1
+kind: Kustomization
+
+namespace: order-platform
+
+resources:
+  - namespace.yaml
+  - kafka.yaml
+  - postgres.yaml
+  - elasticsearch.yaml
+  - couchbase.yaml
+  - couchbase-init-job.yaml
+  - api-gateway.yaml
+  - order-service.yaml
+  - inventory-service.yaml
+  - notification-service.yaml
+  - ai-support-agent.yaml
+  - web-client.yaml
+  - ingress.yaml
+  - networkpolicies.yaml
+
+# Generated from the single source-of-truth script also used by
+# infra/docker-compose.yml, so the two environments can't drift apart.
+configMapGenerator:
+  - name: couchbase-init-script
+    files:
+      - couchbase-init.sh
