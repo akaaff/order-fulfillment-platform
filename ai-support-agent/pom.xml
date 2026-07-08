@@ -14,7 +14,7 @@
     <artifactId>ai-support-agent</artifactId>
     <packaging>jar</packaging>
     <name>ai-support-agent</name>
-    <description>Natural-language order support via Spring AI + local Ollama (scaffold only - built out on Day 4)</description>
+    <description>Natural-language order support via Spring AI + local Ollama, read-only tool-calling into order-service</description>
 
     <dependencies>
         <dependency>
@@ -23,7 +23,19 @@
         </dependency>
         <dependency>
             <groupId>org.springframework.boot</groupId>
+            <artifactId>spring-boot-starter-validation</artifactId>
+        </dependency>
+        <dependency>
+            <groupId>org.springframework.boot</groupId>
             <artifactId>spring-boot-starter-actuator</artifactId>
+        </dependency>
+        <dependency>
+            <groupId>org.springframework.ai</groupId>
+            <artifactId>spring-ai-starter-model-ollama</artifactId>
+        </dependency>
+        <dependency>
+            <groupId>io.github.resilience4j</groupId>
+            <artifactId>resilience4j-spring-boot3</artifactId>
         </dependency>
         <dependency>
             <groupId>org.springframework.boot</groupId>

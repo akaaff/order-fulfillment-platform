@@ -4,6 +4,31 @@ server:
 spring:
   application:
     name: ai-support-agent
+  ai:
+    ollama:
+      # Ollama runs on the host, not in a container - see the Day 7 minikube
+      # note in CLAUDE.md for why (LLM inference is heavy for a laptop cluster).
+      base-url: ${OLLAMA_BASE_URL:http://localhost:11434}
+      chat:
+        options:
+          model: ${OLLAMA_MODEL:llama3.2:3b}
+
+orderplatform:
+  order-service:
+    url: ${ORDER_SERVICE_URL:http://localhost:8081}
+
+resilience4j:
+  circuitbreaker:
+    instances:
+      ollama:
+        sliding-window-size: 10
+        failure-rate-threshold: 50
+        wait-duration-in-open-state: 20s
+        permitted-number-of-calls-in-half-open-state: 3
+  timelimiter:
+    instances:
+      ollama:
+        timeout-duration: 20s
 
 management:
   endpoints:

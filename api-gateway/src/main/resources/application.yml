@@ -27,6 +27,12 @@ spring:
                 - Path=/api/notifications/**
               filters:
                 - StripPrefix=1
+            - id: ai-support-agent
+              uri: ${AI_SUPPORT_AGENT_URL:http://localhost:8084}
+              predicates:
+                - Path=/api/assistant/**
+              filters:
+                - StripPrefix=1
 
 management:
   endpoints:

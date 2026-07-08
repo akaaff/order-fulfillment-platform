@@ -8,8 +8,8 @@ Event-driven order fulfillment platform (generic e-commerce domain: order intake
 reservation -> fulfillment notification). This is a portfolio build, not a production system —
 the full multi-day build plan (architecture, security posture, day-by-day sequencing) lives at
 `C:\Users\yakra\.claude\plans\rippling-kindling-snowflake.md`. Read it before making architectural
-changes; most of the planned end state (gateway-centralized JWT, the Ollama-backed AI agent,
-minikube deployment, Linkerd mTLS, DECISIONS.md) is not built yet.
+changes; most of the planned end state (gateway-centralized JWT, minikube deployment, Linkerd mTLS,
+DECISIONS.md) is not built yet.
 
 ## Commands
 
@@ -30,12 +30,16 @@ PATH="$JAVA_HOME/bin:$PATH"
   (first run only: copy `infra/.env.example` to `infra/.env` if you want non-default credentials;
   `couchbase-init` bootstraps the cluster/bucket/indexes automatically and is safe to re-run)
 
+Ollama must be running on the host separately (`ollama serve`, or the desktop app) with a
+tool-calling-capable model pulled — `llama3.2:3b` is the default (`OLLAMA_MODEL` env var to
+override), already verified to support tool calling via Ollama's `/api/chat`.
+
 Local ports: api-gateway `8080`, order-service `8081`, inventory-service `8082`,
-notification-service `8083`, ai-support-agent `8084` (scaffold only so far), kafka-ui `8090`,
-Kafka broker `9092`, Postgres `5433` (mapped off the default 5432 to avoid clashing with any other
-local Postgres), Couchbase console `8091`, Elasticsearch `9200`. All external traffic is meant to go
-through the gateway (`/api/orders/**`, `/api/inventory/**`, `/api/notifications/**`), not directly to
-a service port.
+notification-service `8083`, ai-support-agent `8084`, kafka-ui `8090`, Kafka broker `9092`, Postgres
+`5433` (mapped off the default 5432 to avoid clashing with any other local Postgres), Couchbase
+console `8091`, Elasticsearch `9200`, Ollama `11434` (host, not docker-compose). All external traffic
+is meant to go through the gateway (`/api/orders/**`, `/api/inventory/**`, `/api/notifications/**`,
+`/api/assistant/**`), not directly to a service port.
 
 ## Architecture
 
@@ -121,6 +125,31 @@ precision when present, which Spring Data ES's own reader can't parse back (`Con
 the next search) - always `.truncatedTo(ChronoUnit.MILLIS)` before stringifying an `Instant` for a
 manual partial update. The full-document path (`operations.save(...)`) doesn't have this problem
 since it goes through the entity mapper on both write and read.
+
+**ai-support-agent** (Spring AI + local Ollama, `llama3.2:3b` by default) exposes
+`POST /assistant/ask {customerId, question}`. **The actual security boundary is in
+`OrderTools`, not the prompt**: a new `OrderTools` instance is constructed per request with
+`customerId` captured in its constructor, and only `orderId`/`status` are parameters the model can
+supply - the model can never control whose orders it's searching, so even a successful prompt
+injection can only change which order/status is queried, never the customer. `getOrderStatus` also
+independently re-checks that the returned order's `customerId` matches, as defense in depth.
+Verified live: cross-customer lookup of a real order ID correctly returns "not found" rather than
+leaking it. **TEMPORARY pre-Day-5 gap**: `customerId` currently comes from the request body, not a
+validated JWT claim (`AssistantController` has a prominent comment on this) - anyone can currently
+claim to be any customer. Do not treat this endpoint as safe to expose beyond localhost until Day 5
+replaces that field with a resolved auth claim.
+
+`GuardedChatCaller` wraps every Ollama call with a Resilience4j `CircuitBreaker` + `TimeLimiter`
+(`resilience4j.circuitbreaker.instances.ollama` / `resilience4j.timelimiter.instances.ollama` in
+`application.yml`) so a slow/hung local model fails fast instead of piling up stuck requests. Since
+the Ollama call is blocking, the `TimeLimiter` wraps it via `CompletableFuture.supplyAsync` on a
+virtual-thread executor rather than making the whole call chain reactive.
+
+**Resilience4j version-alignment gotcha**: `resilience4j-spring-boot3` on its own resolved a
+mismatched `resilience4j-spring6` version and failed at startup with
+`ClassNotFoundException: RxJava3OnClasspathCondition`. Fixed by importing `resilience4j-bom` in the
+root `pom.xml`'s `dependencyManagement` so every resilience4j artifact resolves to the same version -
+don't add a resilience4j dependency anywhere without that BOM already covering it.
 
 **api-gateway** runs Spring Cloud Gateway on WebFlux via `spring-cloud-starter-gateway-server-webflux`
 — the current non-deprecated artifact (the older `spring-cloud-starter-gateway` /
