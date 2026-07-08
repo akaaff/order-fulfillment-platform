@@ -44,8 +44,7 @@ orderplatform:
     private-key-location: ${JWT_PRIVATE_KEY_PATH:file:../infra/keys/jwt-private.pem}
     issuer: order-fulfillment-platform
     ttl: PT1H
-  # No web-client exists yet (Day 6) - this is a placeholder origin, tightened
-  # once the actual client's origin is known.
+  # Matches web-client/'s serving port (python -m http.server 8085 --directory web-client).
   cors:
     allowed-origin: ${WEB_CLIENT_ORIGIN:http://localhost:8085}
   rate-limit:

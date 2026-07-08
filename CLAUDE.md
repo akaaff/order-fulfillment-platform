@@ -8,8 +8,8 @@ Event-driven order fulfillment platform (generic e-commerce domain: order intake
 reservation -> fulfillment notification). This is a portfolio build, not a production system —
 the full multi-day build plan (architecture, security posture, day-by-day sequencing) lives at
 `C:\Users\yakra\.claude\plans\rippling-kindling-snowflake.md`. Read it before making architectural
-changes; most of the planned end state (minikube deployment, Linkerd mTLS, DECISIONS.md, the web
-client) is not built yet.
+changes; most of the planned end state (minikube deployment, Linkerd mTLS, DECISIONS.md) is not
+built yet.
 
 ## Commands
 
@@ -41,13 +41,15 @@ PATH="$JAVA_HOME/bin:$PATH"
 Ollama must be running on the host separately (`ollama serve`, or the desktop app) with a
 tool-calling-capable model pulled — `llama3.2:3b` is the default (`OLLAMA_MODEL` env var to
 override), already verified to support tool calling via Ollama's `/api/chat`.
+- Serve the web client: `python -m http.server 8085 --directory web-client` (plain static files, no
+  build step) — port `8085` matters, it's what api-gateway's CORS config currently allows.
 
 Local ports: api-gateway `8080`, order-service `8081`, inventory-service `8082`,
-notification-service `8083`, ai-support-agent `8084`, kafka-ui `8090`, Kafka broker `9092`, Postgres
-`5433` (mapped off the default 5432 to avoid clashing with any other local Postgres), Couchbase
-console `8091`, Elasticsearch `9200`, Ollama `11434` (host, not docker-compose). All external traffic
-is meant to go through the gateway (`/api/orders/**`, `/api/inventory/**`, `/api/notifications/**`,
-`/api/assistant/**`), not directly to a service port.
+notification-service `8083`, ai-support-agent `8084`, web-client `8085`, kafka-ui `8090`, Kafka
+broker `9092`, Postgres `5433` (mapped off the default 5432 to avoid clashing with any other local
+Postgres), Couchbase console `8091`, Elasticsearch `9200`, Ollama `11434` (host, not docker-compose).
+All external traffic is meant to go through the gateway (`/api/orders/**`, `/api/inventory/**`,
+`/api/notifications/**`, `/api/assistant/**`), not directly to a service port.
 
 ## Architecture
 
@@ -201,9 +203,26 @@ budget using Resilience4j's `RateLimiter` directly (not Spring Cloud Gateway's b
 and explicitly not something a scaled-out gateway could rely on without a shared store. Verified
 live: 40 concurrent requests against a 20/sec budget produced 429s once the budget was exceeded.
 
-**CORS**: locked to a single configurable origin (`orderplatform.cors.allowed-origin`, currently a
-placeholder `http://localhost:8085` since the Day 6 web client doesn't exist yet) rather than left
-open - update this the moment the real client's origin is known.
+**CORS**: locked to a single configurable origin (`orderplatform.cors.allowed-origin`, `http://localhost:8085`
+- the web client's actual serving port, not a placeholder anymore). **CORS preflight gotcha**: Spring
+Security's `.cors(...)` DSL only adds CORS response headers - it does *not* implicitly permit the
+browser's `OPTIONS` preflight request through `.authorizeExchange()`. Without an explicit
+`.pathMatchers(HttpMethod.OPTIONS, "/**").permitAll()`, every preflight (sent with no `Authorization`
+header, by definition) hits `.anyExchange().authenticated()` and gets rejected, which silently breaks
+every browser-based call to a protected route even though the same call works fine from curl. Caught
+this before it became a real bug, while building the web client, not after.
+
+**web-client** (`web-client/`) is plain HTML/CSS/JS with no build step or framework - a login panel
+(pick one of the 5 seeded demo customers), an order form, an orders table with a status filter, and
+an AI assistant chat panel, all calling only `http://localhost:8080` (the gateway) via `fetch`.
+`authedFetch` in `app.js` is the one place that attaches the bearer token and handles a 401 by
+clearing the session and bouncing back to the login screen - every other function goes through it
+rather than calling `fetch` directly. Session (token + customerId) lives in `sessionStorage`, not
+`localStorage` - cleared when the tab closes, matching the token's short (1 hour) lifetime. Verified
+in an actual browser (not just curl): login, place-order happy path, place-order rejection path
+(insufficient stock, reason displayed), order search/filtering, the AI chat round-trip through the
+full gateway → ai-support-agent → Ollama chain, and the invalid-token edge case (corrupting the
+stored token correctly triggers the 401 → logout → "session expired" flow).
 
 ## Conventions to keep consistent
 

@@ -1,0 +1,85 @@
+<!doctype html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Order Fulfillment Platform - Demo</title>
+    <link rel="stylesheet" href="style.css">
+</head>
+<body>
+<header>
+    <h1>Order Fulfillment Platform</h1>
+    <p class="subtitle">Demo client - talks only to the api-gateway, never directly to a backend service.</p>
+</header>
+
+<section id="login-section" class="card">
+    <h2>Log in</h2>
+    <p class="hint">Stub auth - pick one of the seeded demo customers. No password, see CLAUDE.md.</p>
+    <label>
+        Demo customer
+        <select id="customer-select">
+            <option value="cust-001">cust-001</option>
+            <option value="cust-002">cust-002</option>
+            <option value="cust-003">cust-003</option>
+            <option value="cust-004">cust-004</option>
+            <option value="cust-005">cust-005</option>
+        </select>
+    </label>
+    <button id="login-btn">Log in</button>
+    <p id="login-status" class="status"></p>
+</section>
+
+<section id="app-section" hidden>
+    <p class="session-bar">
+        Logged in as <strong id="current-customer"></strong>
+        <button id="logout-btn">Log out</button>
+    </p>
+
+    <section class="card">
+        <h2>Place an order</h2>
+        <div id="order-lines"></div>
+        <button id="add-line-btn" type="button">+ Add line</button>
+        <button id="submit-order-btn" type="button">Place order</button>
+        <pre id="order-result" class="result"></pre>
+    </section>
+
+    <section class="card">
+        <h2>My orders</h2>
+        <label>
+            Status filter
+            <select id="status-filter">
+                <option value="">All</option>
+                <option value="PENDING">Pending</option>
+                <option value="CONFIRMED">Confirmed</option>
+                <option value="CANCELLED">Cancelled</option>
+            </select>
+        </label>
+        <button id="refresh-orders-btn" type="button">Refresh</button>
+        <table id="orders-table">
+            <thead>
+            <tr>
+                <th>Order ID</th>
+                <th>Status</th>
+                <th>SKUs</th>
+                <th>Created</th>
+                <th>Note</th>
+            </tr>
+            </thead>
+            <tbody></tbody>
+        </table>
+    </section>
+
+    <section class="card">
+        <h2>Ask the assistant</h2>
+        <p class="hint">Read-only: can look up and search your own orders. Can't cancel, refund, or modify anything.</p>
+        <div id="chat-log"></div>
+        <div class="chat-input-row">
+            <input id="chat-input" type="text" placeholder="e.g. What's the status of my last order?">
+            <button id="chat-send-btn" type="button">Send</button>
+        </div>
+    </section>
+</section>
+
+<script src="app.js"></script>
+</body>
+</html>
