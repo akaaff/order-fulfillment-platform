@@ -15,6 +15,12 @@ import java.time.Instant;
 import java.util.List;
 import java.util.UUID;
 
+/**
+ * Order intake and lookup. Creation is fire-and-forget from the caller's
+ * perspective - the response reflects PENDING status only; the eventual
+ * CONFIRMED/CANCELLED outcome arrives asynchronously via Kafka and is only
+ * visible on a follow-up GET.
+ */
 @RestController
 @RequestMapping("/orders")
 public class OrderController {

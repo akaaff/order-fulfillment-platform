@@ -11,6 +11,7 @@ import org.springframework.stereotype.Component;
 import java.time.Instant;
 import java.util.UUID;
 
+/** Publishes every order lifecycle event, keyed by orderId so all events for one order land on the same partition and stay in order. */
 @Component
 public class OrderEventPublisher {
 

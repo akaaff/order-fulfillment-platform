@@ -7,6 +7,7 @@ import com.orderplatform.inventory.service.ReservationResult;
 import org.springframework.kafka.annotation.KafkaListener;
 import org.springframework.stereotype.Component;
 
+/** Entry point into the Inventory bounded context: every new order attempts a reservation here. */
 @Component
 public class OrderCreatedListener {
 

@@ -9,6 +9,7 @@ import org.springframework.stereotype.Component;
 import java.time.Instant;
 import java.util.UUID;
 
+/** Publishes reservation outcomes, keyed by orderId to match order-service's partitioning. */
 @Component
 public class InventoryEventPublisher {
 

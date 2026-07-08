@@ -1,5 +1,9 @@
 package com.orderplatform.events;
 
+/**
+ * Canonical Kafka topic names shared by every producer and consumer, so a
+ * topic is never typo'd or duplicated with a different literal in each service.
+ */
 public final class EventTopics {
 
     public static final String ORDER_CREATED = "order.created";

@@ -7,6 +7,7 @@ import jakarta.validation.constraints.Size;
 
 import java.util.List;
 
+/** Inbound payload for {@code POST /orders}; validated at this boundary before a domain Order exists. */
 public record CreateOrderRequest(
 
         @NotBlank

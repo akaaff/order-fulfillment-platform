@@ -6,6 +6,11 @@ import java.time.Instant;
 import java.util.List;
 import java.util.UUID;
 
+/**
+ * Aggregate root for the Ordering bounded context. Identity and line items
+ * are fixed at creation; only status transitions once inventory responds,
+ * which is why those fields are the only mutable (volatile) state here.
+ */
 public final class Order {
 
     private final UUID orderId;

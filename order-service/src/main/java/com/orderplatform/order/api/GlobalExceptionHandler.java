@@ -15,6 +15,10 @@ import java.util.Map;
 /**
  * Keeps error responses free of stack traces / internal details -
  * only field-level validation messages are ever returned to the client.
+ *
+ * <p>Known gap: the catch-all {@link #handleUnexpected} also swallows Spring's
+ * "no handler found" case (e.g. GET /orders with no id) as a 500 instead of a
+ * 404 - not yet fixed.
  */
 @RestControllerAdvice
 public class GlobalExceptionHandler {

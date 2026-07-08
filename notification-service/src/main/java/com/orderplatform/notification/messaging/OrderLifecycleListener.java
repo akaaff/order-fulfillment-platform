@@ -14,6 +14,7 @@ import org.springframework.stereotype.Component;
 import java.time.Instant;
 import java.util.UUID;
 
+/** Terminal consumer of the order lifecycle: turns a confirmed/cancelled event into a customer-facing notification. */
 @Component
 public class OrderLifecycleListener {
 

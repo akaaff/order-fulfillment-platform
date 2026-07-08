@@ -7,7 +7,9 @@ import org.springframework.context.annotation.Configuration;
 
 /**
  * Declares every topic this service produces or consumes so the flow works
- * regardless of which service happens to start first.
+ * regardless of which service happens to start first. NewTopic creation via
+ * KafkaAdmin is idempotent, so the same topic being declared by multiple
+ * services is safe and deliberate.
  */
 @Configuration
 public class KafkaTopicConfig {

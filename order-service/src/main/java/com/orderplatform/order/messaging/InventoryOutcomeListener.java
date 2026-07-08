@@ -9,6 +9,12 @@ import org.slf4j.LoggerFactory;
 import org.springframework.kafka.annotation.KafkaListener;
 import org.springframework.stereotype.Component;
 
+/**
+ * Reacts to inventory's reservation outcome and advances the order to its
+ * terminal state. An unknown orderId is logged rather than thrown, since a
+ * stale/replayed event for an order this instance doesn't know about isn't
+ * itself an error - see the in-memory OrderRepository placeholder note.
+ */
 @Component
 public class InventoryOutcomeListener {
 

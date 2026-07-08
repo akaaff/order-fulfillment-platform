@@ -8,6 +8,7 @@ import java.time.Instant;
 import java.util.List;
 import java.util.UUID;
 
+/** Outbound view of an Order - a projection, not the aggregate itself, so the domain type can evolve independently of the API shape. */
 public record OrderResponse(
         UUID orderId,
         String customerId,
