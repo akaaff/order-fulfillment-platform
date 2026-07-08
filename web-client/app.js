@@ -58,6 +58,18 @@ function showLogin() {
     els.loginStatus.textContent = "";
 }
 
+// The orders table already gets overwritten by refreshOrders() on the next
+// login, but the chat log only ever appends and the order-result box only
+// ever gets overwritten by a new "place order" click - without this, a
+// previous customer's chat transcript and last order confirmation stay
+// visible after switching customers, even though every underlying API call
+// is correctly scoped to whichever customer is actually logged in.
+function resetSessionUiState() {
+    els.chatLog.innerHTML = "";
+    els.orderResult.textContent = "";
+    els.ordersTableBody.innerHTML = "";
+}
+
 // Every call to a protected route goes through here so the bearer token and
 // the "session expired, log out" handling only live in one place.
 async function authedFetch(path, options = {}) {
@@ -67,6 +79,7 @@ async function authedFetch(path, options = {}) {
     const response = await fetch(`${GATEWAY}${path}`, Object.assign({}, options, {headers}));
     if (response.status === 401) {
         clearSession();
+        resetSessionUiState();
         showLogin();
         els.loginStatus.textContent = "Session expired - please log in again.";
         els.loginStatus.className = "status error";
@@ -99,6 +112,7 @@ async function login() {
 
 function logout() {
     clearSession();
+    resetSessionUiState();
     showLogin();
 }
 

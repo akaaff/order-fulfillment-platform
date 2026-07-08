@@ -224,6 +224,18 @@ in an actual browser (not just curl): login, place-order happy path, place-order
 full gateway → ai-support-agent → Ollama chain, and the invalid-token edge case (corrupting the
 stored token correctly triggers the 401 → logout → "session expired" flow).
 
+**Stale-UI-state gotcha (found via manual testing, not the earlier automated pass)**: switching
+demo customers (log out, log back in as someone else) looked like every customer saw the same
+orders and the same AI conversation - but the backend was never the problem (re-verified: each
+customer's `/orders/search` call correctly returned only their own data). The orders table happened
+to self-heal because `refreshOrders()` overwrites it on every login, but `#chat-log` only ever
+*appends* messages and `#order-result` only gets overwritten by the next "place order" click -
+neither was ever cleared on logout, so the previous customer's chat transcript and last order
+confirmation stayed visible and bled into the next customer's session. Fixed with
+`resetSessionUiState()`, called from both `logout()` and `authedFetch`'s 401 handler. Lesson: a
+correctly-scoped API is not the same thing as a correctly-reset UI - check what's still on screen
+after a session boundary, not just what the next network call returns.
+
 ## Conventions to keep consistent
 
 - **This code is a portfolio artifact meant to be read by strangers (interviewers/reviewers), not
