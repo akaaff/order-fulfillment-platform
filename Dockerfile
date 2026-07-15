@@ -26,13 +26,25 @@ COPY inventory-service/src inventory-service/src
 COPY notification-service/src notification-service/src
 COPY ai-support-agent/src ai-support-agent/src
 
-RUN --mount=type=cache,target=/root/.m2 mvn -q -DskipTests install
+# dependency-check.skip: `install` runs Maven's `verify` phase too, which is
+# where dependency-check-maven is bound (see the root pom.xml) - without this
+# flag, every image build also tries to run a full NVD-backed CVE scan
+# inside the ephemeral build container (no cached database, no resilience to
+# NVD's rate limiting), which is what actually caused this Dockerfile's build
+# to stall/fail for hours during the security pass that added the plugin.
+# Dependency scanning belongs in CI/local `mvn verify`, not baked into every
+# image build.
+RUN --mount=type=cache,target=/root/.m2 mvn -q -DskipTests -Ddependency-check.skip=true install
 
 # Shared non-root runtime base - each service stage below inherits this
-# rather than repeating the user setup.
+# rather than repeating the user setup. Explicit numeric uid/gid (10001), not
+# just a named user: Kubernetes's securityContext.runAsNonRoot: true (set on
+# every app Deployment - see CLAUDE.md's security-hardening section) can't
+# verify a non-numeric USER against the image and fails admission with
+# CreateContainerConfigError otherwise ("cannot verify user is non-root").
 FROM eclipse-temurin:21-jre-alpine-3.22 AS runtime-base
-RUN addgroup -S app && adduser -S app -G app
-USER app
+RUN addgroup -S -g 10001 app && adduser -S -u 10001 -G app app
+USER 10001:10001
 WORKDIR /app
 
 FROM runtime-base AS api-gateway

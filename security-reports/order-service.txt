@@ -1,0 +1,100 @@
+
+Report Summary
+
+┌────────────────────────────────────────────────────┬────────┬─────────────────┬─────────┐
+│                       Target                       │  Type  │ Vulnerabilities │ Secrets │
+├────────────────────────────────────────────────────┼────────┼─────────────────┼─────────┤
+│ order-platform/order-service:local (alpine 3.22.5) │ alpine │        5        │    -    │
+├────────────────────────────────────────────────────┼────────┼─────────────────┼─────────┤
+│ app/app.jar                                        │  jar   │       12        │    -    │
+└────────────────────────────────────────────────────┴────────┴─────────────────┴─────────┘
+Legend:
+- '-': Not scanned
+- '0': Clean (no security findings detected)
+
+
+order-platform/order-service:local (alpine 3.22.5)
+==================================================
+Total: 5 (HIGH: 5, CRITICAL: 0)
+
+┌───────────────┬────────────────┬──────────┬────────┬───────────────────┬───────────────┬──────────────────────────────────────────────────────────────┐
+│    Library    │ Vulnerability  │ Severity │ Status │ Installed Version │ Fixed Version │                            Title                             │
+├───────────────┼────────────────┼──────────┼────────┼───────────────────┼───────────────┼──────────────────────────────────────────────────────────────┤
+│ libexpat      │ CVE-2026-56131 │ HIGH     │ fixed  │ 2.8.1-r0          │ 2.8.2-r0      │ libexpat before 2.8.2 lacks handler call depth tracking for  │
+│               │                │          │        │                   │               │ calls to X...                                                │
+│               │                │          │        │                   │               │ https://avd.aquasec.com/nvd/cve-2026-56131                   │
+│               ├────────────────┤          │        │                   │               ├──────────────────────────────────────────────────────────────┤
+│               │ CVE-2026-56407 │          │        │                   │               │ libexpat before 2.8.2 has an integer overflow in doProlog    │
+│               │                │          │        │                   │               │ that is rela...                                              │
+│               │                │          │        │                   │               │ https://avd.aquasec.com/nvd/cve-2026-56407                   │
+│               ├────────────────┤          │        │                   │               ├──────────────────────────────────────────────────────────────┤
+│               │ CVE-2026-56408 │          │        │                   │               │ libexpat before 2.8.2 has an integer overflow in copyString. │
+│               │                │          │        │                   │               │ https://avd.aquasec.com/nvd/cve-2026-56408                   │
+├───────────────┼────────────────┤          │        ├───────────────────┼───────────────┼──────────────────────────────────────────────────────────────┤
+│ p11-kit       │ CVE-2026-2100  │          │        │ 0.25.5-r2         │ 0.26.2-r0     │ p11-kit: NULL dereference via C_DeriveKey with specific NULL │
+│               │                │          │        │                   │               │ parameters                                                   │
+│               │                │          │        │                   │               │ https://avd.aquasec.com/nvd/cve-2026-2100                    │
+├───────────────┤                │          │        │                   │               │                                                              │
+│ p11-kit-trust │                │          │        │                   │               │                                                              │
+│               │                │          │        │                   │               │                                                              │
+│               │                │          │        │                   │               │                                                              │
+└───────────────┴────────────────┴──────────┴────────┴───────────────────┴───────────────┴──────────────────────────────────────────────────────────────┘
+
+Java (jar)
+==========
+Total: 12 (HIGH: 12, CRITICAL: 0)
+
+┌───────────────────────────────────────────────────────┬────────────────┬──────────┬────────┬───────────────────┬─────────────────────────────┬──────────────────────────────────────────────────────────────┐
+│                        Library                        │ Vulnerability  │ Severity │ Status │ Installed Version │        Fixed Version        │                            Title                             │
+├───────────────────────────────────────────────────────┼────────────────┼──────────┼────────┼───────────────────┼─────────────────────────────┼──────────────────────────────────────────────────────────────┤
+│ com.fasterxml.jackson.core:jackson-databind (app.jar) │ CVE-2026-54512 │ HIGH     │ fixed  │ 2.17.3            │ 2.18.8, 3.1.4, 2.21.4       │ jackson-databind: jackson-databind: Arbitrary code execution │
+│                                                       │                │          │        │                   │                             │ via PolymorphicTypeValidator bypass                          │
+│                                                       │                │          │        │                   │                             │ https://avd.aquasec.com/nvd/cve-2026-54512                   │
+│                                                       ├────────────────┤          │        │                   ├─────────────────────────────┼──────────────────────────────────────────────────────────────┤
+│                                                       │ CVE-2026-54513 │          │        │                   │ 2.18.8, 2.21.4, 3.1.4       │ jackson-databind: Jackson-databind: Security bypass allows   │
+│                                                       │                │          │        │                   │                             │ arbitrary code execution                                     │
+│                                                       │                │          │        │                   │                             │ https://avd.aquasec.com/nvd/cve-2026-54513                   │
+├───────────────────────────────────────────────────────┼────────────────┤          │        ├───────────────────┼─────────────────────────────┼──────────────────────────────────────────────────────────────┤
+│ io.netty:netty-codec (app.jar)                        │ CVE-2026-42583 │          │        │ 4.1.119.Final     │ 4.1.133.Final               │ netty: io.netty/netty-codec-compression:                     │
+│                                                       │                │          │        │                   │                             │ io.netty/netty-codec: Netty: Denial of Service via excessive │
+│                                                       │                │          │        │                   │                             │ memory allocation in...                                      │
+│                                                       │                │          │        │                   │                             │ https://avd.aquasec.com/nvd/cve-2026-42583                   │
+├───────────────────────────────────────────────────────┼────────────────┤          │        │                   ├─────────────────────────────┼──────────────────────────────────────────────────────────────┤
+│ io.netty:netty-codec-http (app.jar)                   │ CVE-2026-33870 │          │        │                   │ 4.1.132.Final, 4.2.10.Final │ io.netty/netty-codec-http: Netty: Request smuggling via      │
+│                                                       │                │          │        │                   │                             │ incorrect parsing of HTTP/1.1 chunked transfer encoding...   │
+│                                                       │                │          │        │                   │                             │ https://avd.aquasec.com/nvd/cve-2026-33870                   │
+│                                                       ├────────────────┤          │        │                   ├─────────────────────────────┼──────────────────────────────────────────────────────────────┤
+│                                                       │ CVE-2026-42584 │          │        │                   │ 4.2.13.Final, 4.1.133.Final │ netty: io.netty/netty-codec-http: Netty: Incorrect HTTP      │
+│                                                       │                │          │        │                   │                             │ response parsing leads to data confusion                     │
+│                                                       │                │          │        │                   │                             │ https://avd.aquasec.com/nvd/cve-2026-42584                   │
+│                                                       ├────────────────┤          │        │                   │                             ├──────────────────────────────────────────────────────────────┤
+│                                                       │ CVE-2026-42587 │          │        │                   │                             │ netty: io.netty/netty-codec-http:                            │
+│                                                       │                │          │        │                   │                             │ io.netty/netty-codec-http2: Netty: Denial of Service via     │
+│                                                       │                │          │        │                   │                             │ unbounded memory allocation in...                            │
+│                                                       │                │          │        │                   │                             │ https://avd.aquasec.com/nvd/cve-2026-42587                   │
+├───────────────────────────────────────────────────────┼────────────────┤          │        │                   ├─────────────────────────────┼──────────────────────────────────────────────────────────────┤
+│ io.netty:netty-codec-http2 (app.jar)                  │ CVE-2025-55163 │          │        │                   │ 4.2.4.Final, 4.1.124.Final  │ netty: netty-codec-http2: Netty MadeYouReset HTTP/2 DDoS     │
+│                                                       │                │          │        │                   │                             │ Vulnerability                                                │
+│                                                       │                │          │        │                   │                             │ https://avd.aquasec.com/nvd/cve-2025-55163                   │
+│                                                       ├────────────────┤          │        │                   ├─────────────────────────────┼──────────────────────────────────────────────────────────────┤
+│                                                       │ CVE-2026-33871 │          │        │                   │ 4.1.132.Final, 4.2.11.Final │ netty: Netty: Denial of Service via HTTP/2 CONTINUATION      │
+│                                                       │                │          │        │                   │                             │ frame flood                                                  │
+│                                                       │                │          │        │                   │                             │ https://avd.aquasec.com/nvd/cve-2026-33871                   │
+│                                                       ├────────────────┤          │        │                   ├─────────────────────────────┼──────────────────────────────────────────────────────────────┤
+│                                                       │ CVE-2026-42587 │          │        │                   │ 4.2.13.Final, 4.1.133.Final │ netty: io.netty/netty-codec-http:                            │
+│                                                       │                │          │        │                   │                             │ io.netty/netty-codec-http2: Netty: Denial of Service via     │
+│                                                       │                │          │        │                   │                             │ unbounded memory allocation in...                            │
+│                                                       │                │          │        │                   │                             │ https://avd.aquasec.com/nvd/cve-2026-42587                   │
+├───────────────────────────────────────────────────────┼────────────────┤          │        │                   ├─────────────────────────────┼──────────────────────────────────────────────────────────────┤
+│ io.netty:netty-handler (app.jar)                      │ CVE-2026-44249 │          │        │                   │ 4.2.15.Final, 4.1.135.Final │ netty-handler: netty-handler: IPv6 subnet rule bypass due to │
+│                                                       │                │          │        │                   │                             │ incorrect masking operation                                  │
+│                                                       │                │          │        │                   │                             │ https://avd.aquasec.com/nvd/cve-2026-44249                   │
+│                                                       ├────────────────┤          │        │                   │                             ├──────────────────────────────────────────────────────────────┤
+│                                                       │ CVE-2026-45416 │          │        │                   │                             │ netty-handler: Netty: Denial of Service due to eager buffer  │
+│                                                       │                │          │        │                   │                             │ allocation in TLS...                                         │
+│                                                       │                │          │        │                   │                             │ https://avd.aquasec.com/nvd/cve-2026-45416                   │
+│                                                       ├────────────────┤          │        │                   │                             ├──────────────────────────────────────────────────────────────┤
+│                                                       │ CVE-2026-50010 │          │        │                   │                             │ netty-handler: Netty: Improper trust manager handling leads  │
+│                                                       │                │          │        │                   │                             │ to hostname verification bypass                              │
+│                                                       │                │          │        │                   │                             │ https://avd.aquasec.com/nvd/cve-2026-50010                   │
+└───────────────────────────────────────────────────────┴────────────────┴──────────┴────────┴───────────────────┴─────────────────────────────┴──────────────────────────────────────────────────────────────┘

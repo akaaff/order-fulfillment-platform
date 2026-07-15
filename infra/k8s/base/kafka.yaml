@@ -52,6 +52,10 @@ spec:
               value: "MkU3OEVBNTcwNTJENDM2Qk"
             - name: KAFKA_HEAP_OPTS
               value: "-Xms384m -Xmx384m"
+          # See postgres.yaml's securityContext comment - same conservative
+          # approach for this third-party image.
+          securityContext:
+            allowPrivilegeEscalation: false
           resources:
             requests:
               memory: 384Mi

@@ -16,6 +16,10 @@ spec:
         app: ai-support-agent
     spec:
       serviceAccountName: ai-support-agent
+      # See api-gateway.yaml for why this pod/container securityContext pair
+      # exists on every app-service Deployment.
+      securityContext:
+        runAsNonRoot: true
       containers:
         - name: ai-support-agent
           image: order-platform/ai-support-agent:local
@@ -31,6 +35,11 @@ spec:
               value: http://host.minikube.internal:11434
             - name: JWT_PUBLIC_KEY_PATH
               value: file:/etc/jwt/jwt-public.pem
+          securityContext:
+            allowPrivilegeEscalation: false
+            readOnlyRootFilesystem: true
+            capabilities:
+              drop: ["ALL"]
           resources:
             requests:
               memory: 256Mi
@@ -54,10 +63,14 @@ spec:
             - name: jwt-keys
               mountPath: /etc/jwt
               readOnly: true
+            - name: tmp
+              mountPath: /tmp
       volumes:
         - name: jwt-keys
           secret:
             secretName: jwt-keys
+        - name: tmp
+          emptyDir: {}
 ---
 apiVersion: v1
 kind: Service

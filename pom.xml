@@ -25,6 +25,10 @@
         <spring-cloud.version>2025.0.3</spring-cloud.version>
         <spring-ai.version>1.1.8</spring-ai.version>
         <resilience4j.version>2.4.0</resilience4j.version>
+        <!-- Overrides Spring Boot 3.5.16's own pinned 10.1.55 - that patch has several
+             Critical (CVSS 9.1) CVEs; 10.1.57 is a same-line patch-only bump using
+             Spring Boot's own documented override point, not an independent upgrade. -->
+        <tomcat.version>10.1.57</tomcat.version>
     </properties>
 
     <modules>
@@ -64,6 +68,60 @@
                 <artifactId>events-common</artifactId>
                 <version>${project.version}</version>
             </dependency>
+            <!-- Overrides Spring Boot 3.5.16's own pinned 3.8.3 - that version vendors
+                 (shades) a netty-transport release with several Critical (CVSS 9+) CVEs
+                 inside core-io-3.8.3.jar itself, so it isn't fixable via a normal
+                 dependencyManagement override of io.netty:netty-transport (there's no
+                 separately-resolved artifact to override - it's bundled inside Couchbase's
+                 own jar). Tried one minor version bump (3.9.2) first to stay close to what
+                 Spring Boot 3.5.16 was tested against, but its vendored netty (4.1.127.Final)
+                 still carried the same CVEs - 3.12.1 (latest available) was needed to
+                 actually clear them. Verified against the real deployed cluster after this
+                 bump, not just unit tests, since Spring Data Couchbase's auto-config isn't
+                 exercised by mocked unit tests. -->
+            <dependency>
+                <groupId>com.couchbase.client</groupId>
+                <artifactId>java-client</artifactId>
+                <version>3.12.1</version>
+            </dependency>
         </dependencies>
     </dependencyManagement>
+
+    <build>
+        <plugins>
+            <!-- Scans every module's dependency tree against the NVD CVE database. Bound to
+                 `verify` so `mvn verify` (and CI) runs it automatically; run standalone with
+                 `mvn org.owasp:dependency-check-maven:check`. failBuildOnCVSS is deliberately
+                 high (9, i.e. Critical only) rather than the plugin's stricter defaults - this is
+                 a portfolio project surfacing findings for the report in DECISIONS.md/SECURITY.md,
+                 not a gate that should block every build over a Medium-severity transitive CVE
+                 with no available fix. -->
+            <plugin>
+                <groupId>org.owasp</groupId>
+                <artifactId>dependency-check-maven</artifactId>
+                <version>12.1.3</version>
+                <configuration>
+                    <failBuildOnCVSS>9</failBuildOnCVSS>
+                    <formats>
+                        <format>HTML</format>
+                        <format>JSON</format>
+                    </formats>
+                    <!-- The Sonatype OSS Index Analyzer (a supplementary cross-check beyond
+                         the primary NVD CVE data) now returns 401 Unauthorized for
+                         unauthenticated requests - Sonatype appears to have started requiring
+                         an account/token for what used to be a free anonymous API. Disabled
+                         rather than worked around with credentials, since NVD is already the
+                         analysis's primary and sufficient data source for this project's scope. -->
+                    <ossindexAnalyzerEnabled>false</ossindexAnalyzerEnabled>
+                </configuration>
+                <executions>
+                    <execution>
+                        <goals>
+                            <goal>check</goal>
+                        </goals>
+                    </execution>
+                </executions>
+            </plugin>
+        </plugins>
+    </build>
 </project>

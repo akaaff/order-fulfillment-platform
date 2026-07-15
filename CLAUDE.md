@@ -390,6 +390,65 @@ every Couchbase pod recreation, or order-service will fail SASL authentication a
 bucket/user that no longer exists. This bit us three separate times while rolling out the mesh and
 its policies — worth remembering before any future change that touches Couchbase's Deployment spec.
 
+## Testing, dependency scanning, and NetworkPolicy enforcement (Day 9)
+
+**Unit tests**: 58 JUnit5/Mockito tests across the four modules with meaningful logic
+(inventory-service: `InventoryReservationService`, `InventoryOrderProcessor`, `OutboxWriter`,
+`OutboxRelay`, `OutboxPoller`; order-service: the `Order` domain aggregate, its own
+`OutboxWriter`/`OutboxRelay`, `GlobalExceptionHandler`; api-gateway: `JwtIssuer`; ai-support-agent:
+`OrderTools` — including the cross-customer-leak case explicitly — and its own
+`GlobalExceptionHandler`). `notification-service` has no test-worthy logic of its own yet. Run with
+`mvn test` at the root or `mvn -pl <module> -am test` per module.
+
+**OWASP Dependency-Check** is wired into the parent POM's `verify` phase
+(`org.owasp:dependency-check-maven`, `failBuildOnCVSS=9`). Two important gotchas:
+- **Never run `mvn install` (only `mvn install` — `package` is fine) inside a Docker build without
+  `-Ddependency-check.skip=true`.** `install` runs through `verify`, where this plugin is bound;
+  without the skip flag, every image build also tries to download the full NVD dataset inside the
+  ephemeral, uncached build container - this is what actually caused hours of apparently-stalled
+  Docker builds during this pass, not a Docker or network problem. The root `Dockerfile`'s build RUN
+  line carries this flag now; don't remove it.
+- The **Sonatype OSS Index Analyzer** (a supplementary check beyond NVD) now requires
+  authentication for what used to be an anonymous API - it's disabled in the plugin config
+  (`ossindexAnalyzerEnabled: false`) rather than worked around with credentials, since NVD alone is
+  sufficient for this project's scope.
+- This pass caught and fixed two real **Critical** (CVSS ≥ 9) findings, not just Highs: Couchbase's
+  client vendors (shades) `netty-transport` *inside* `core-io-3.8.3.jar` itself - not a normal
+  transitive dependency, so not fixable via a `dependencyManagement` override of
+  `io.netty:netty-transport` directly. Fixed by bumping `com.couchbase.client:java-client` in the
+  root pom's `dependencyManagement` - one minor version (3.9.2) wasn't enough (its vendored netty
+  still carried the CVEs), 3.12.1 (latest available) was required. Also bumped
+  `tomcat.version` to `10.1.57` via Spring Boot's own documented override property (a same-line
+  patch, not an independent library swap). Both changes were verified against the *real* deployed
+  cluster (order-service's Couchbase transactions still work, full stack still settles orders end
+  to end), not just left as an unverified version bump - see SECURITY.md for the full record.
+
+**NetworkPolicy enforcement**: minikube's default CNI doesn't implement `NetworkPolicy` at all, so
+through Day 7-8 these were structurally correct but inert. This pass switched CNI specifically to
+make that layer real:
+- **Calico was tried first and abandoned.** It exhibited a SNAT/hairpin-NAT interaction with
+  kube-proxy (Service-routed traffic having its source IP rewritten to the *node's* IP before
+  reaching the destination pod) that broke Linkerd's mTLS identity resolution entirely for any
+  Service-routed call - Linkerd's inbound proxy saw the node IP, not a recognized meshed pod
+  identity, and denied everything. Two targeted Calico config changes (`natOutgoing: false`,
+  `ipipMode: Never`) were tested and didn't resolve it; root-causing further would have meant deep
+  iptables tracing with no guaranteed payoff. **Cilium (`minikube start --cni=cilium`) doesn't
+  exhibit this** and is what the cluster actually runs today.
+- **Verifying "is it actually enforced" needs a protocol-aware probe, not a bare TCP check.** `nc -z`
+  against a mesh-protected port will report "connected" even when the request is ultimately denied,
+  because Linkerd's inbound proxy always accepts the raw TCP handshake before evaluating
+  authorization - only a real request (`curl`, checking the actual HTTP status/response) proves
+  anything. This cost real debugging time before the distinction was clear.
+- **Enforcement being real immediately surfaced a genuine, previously-invisible gap**:
+  `networkpolicies.yaml` covered every steady-state service relationship but never accounted for
+  the one-shot `couchbase-init` Job, whose pod only carries the Job controller's auto-added
+  `job-name` label, not an `app` label matching any existing rule. Fixed by adding an explicit
+  `app: couchbase-init` label to the Job's pod template (`couchbase-init-job.yaml`) plus a
+  dedicated `allow-couchbase-init-to-couchbase` policy, kept separate from the existing
+  order-service-to-couchbase-and-es rule since couchbase-init has no business reaching
+  Elasticsearch. This class of gap is structurally undetectable while NetworkPolicy is inert -
+  concrete evidence for doing this enforcement pass at all, not just a checkbox exercise.
+
 ## Conventions to keep consistent
 
 - **This code is a portfolio artifact meant to be read by strangers (interviewers/reviewers), not

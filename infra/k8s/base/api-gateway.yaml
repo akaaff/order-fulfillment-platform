@@ -16,6 +16,16 @@ spec:
         app: api-gateway
     spec:
       serviceAccountName: api-gateway
+      # Every app-service Deployment in this file set gets the same
+      # securityContext pair: pod-level runAsNonRoot (safe - the shared root
+      # Dockerfile already creates and switches to a non-root "app" user, so
+      # this just makes that guarantee explicit and K8s-enforced instead of
+      # implicit in the image); container-level readOnlyRootFilesystem +
+      # dropped capabilities (the JVM needs *some* writable path - /tmp,
+      # mounted below as emptyDir - but nothing else). A Trivy config scan
+      # flagged every Deployment for lacking this before it was added.
+      securityContext:
+        runAsNonRoot: true
       containers:
         - name: api-gateway
           image: order-platform/api-gateway:local
@@ -36,6 +46,11 @@ spec:
               value: file:/etc/jwt/jwt-private.pem
             - name: WEB_CLIENT_ORIGIN
               value: http://order-platform.local
+          securityContext:
+            allowPrivilegeEscalation: false
+            readOnlyRootFilesystem: true
+            capabilities:
+              drop: ["ALL"]
           resources:
             requests:
               memory: 256Mi
@@ -59,10 +74,14 @@ spec:
             - name: jwt-keys
               mountPath: /etc/jwt
               readOnly: true
+            - name: tmp
+              mountPath: /tmp
       volumes:
         - name: jwt-keys
           secret:
             secretName: jwt-keys
+        - name: tmp
+          emptyDir: {}
 ---
 apiVersion: v1
 kind: Service

@@ -16,6 +16,10 @@ spec:
         app: order-service
     spec:
       serviceAccountName: order-service
+      # See api-gateway.yaml for why this pod/container securityContext pair
+      # exists on every app-service Deployment.
+      securityContext:
+        runAsNonRoot: true
       containers:
         - name: order-service
           image: order-platform/order-service:local
@@ -40,6 +44,11 @@ spec:
               value: kafka:9092
             - name: JWT_PUBLIC_KEY_PATH
               value: file:/etc/jwt/jwt-public.pem
+          securityContext:
+            allowPrivilegeEscalation: false
+            readOnlyRootFilesystem: true
+            capabilities:
+              drop: ["ALL"]
           resources:
             requests:
               memory: 320Mi
@@ -63,10 +72,14 @@ spec:
             - name: jwt-keys
               mountPath: /etc/jwt
               readOnly: true
+            - name: tmp
+              mountPath: /tmp
       volumes:
         - name: jwt-keys
           secret:
             secretName: jwt-keys
+        - name: tmp
+          emptyDir: {}
 ---
 apiVersion: v1
 kind: Service

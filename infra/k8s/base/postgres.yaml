@@ -26,6 +26,19 @@ spec:
           envFrom:
             - secretRef:
                 name: postgres-credentials
+          # Deliberately not runAsNonRoot/readOnlyRootFilesystem/capabilities
+          # drop here, unlike the six self-built app services (see
+          # api-gateway.yaml) - the official postgres image's entrypoint
+          # needs to run as root briefly to chown/initialize a fresh data
+          # directory (this project's storage is emptyDir, so every pod
+          # recreation is a fresh directory) before dropping to the
+          # postgres user itself via gosu. allowPrivilegeEscalation: false
+          # is still safe to set - it blocks gaining *new* privileges via a
+          # setuid binary, not the entrypoint's own voluntary privilege drop.
+          # See CLAUDE.md/SECURITY.md for why the fuller hardening wasn't
+          # guessed at on third-party images without verifying each one.
+          securityContext:
+            allowPrivilegeEscalation: false
           resources:
             requests:
               memory: 128Mi

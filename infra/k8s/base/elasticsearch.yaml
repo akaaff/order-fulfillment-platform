@@ -33,6 +33,13 @@ spec:
               value: "false"
             - name: ES_JAVA_OPTS
               value: "-Xms512m -Xmx512m"
+          # See postgres.yaml's securityContext comment - same conservative
+          # approach for this third-party image (ES's vm.max_map_count/mmap
+          # requirements and internal setup on a fresh emptyDir data
+          # directory make runAsNonRoot/readOnlyRootFilesystem riskier to
+          # assert without verifying against this specific image version).
+          securityContext:
+            allowPrivilegeEscalation: false
           # Bumped from an initial 768Mi limit after a real OOMKill: ES's
           # actual container footprint is heap plus a large non-heap chunk
           # (Lucene mmap, Netty buffers, thread stacks) - 384m heap needed

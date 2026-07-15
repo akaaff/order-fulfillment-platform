@@ -11,9 +11,27 @@ metadata:
 spec:
   backoffLimit: 3
   template:
+    metadata:
+      # An explicit "app" label, not just the Job controller's own
+      # auto-added job-name label - networkpolicies.yaml's ingress rules are
+      # all app-label-based (matching every other workload in this repo), so
+      # this is what lets a NetworkPolicy target this Job's pods at all.
+      labels:
+        app: couchbase-init
     spec:
       restartPolicy: Never
       serviceAccountName: couchbase-init
+      # Unlike the stateful third-party infra images (see postgres.yaml's
+      # comment), curlimages/curl is built specifically to run as a
+      # dedicated non-root "curl_user" (uid 100) with no root-requiring
+      # setup step - full hardening is safe here. runAsUser/runAsGroup are
+      # required (not just runAsNonRoot) because the image's USER directive
+      # names the user rather than a numeric uid - Kubernetes can't verify
+      # "non-root" against a name it can't resolve without one.
+      securityContext:
+        runAsNonRoot: true
+        runAsUser: 100
+        runAsGroup: 101
       containers:
         - name: couchbase-init
           image: curlimages/curl:8.21.0
@@ -21,11 +39,20 @@ spec:
           envFrom:
             - secretRef:
                 name: couchbase-credentials
+          securityContext:
+            allowPrivilegeEscalation: false
+            readOnlyRootFilesystem: true
+            capabilities:
+              drop: ["ALL"]
           volumeMounts:
             - name: init-script
               mountPath: /scripts
+            - name: tmp
+              mountPath: /tmp
       volumes:
         - name: init-script
           configMap:
             name: couchbase-init-script
             defaultMode: 0755
+        - name: tmp
+          emptyDir: {}

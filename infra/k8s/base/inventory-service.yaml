@@ -16,6 +16,10 @@ spec:
         app: inventory-service
     spec:
       serviceAccountName: inventory-service
+      # See api-gateway.yaml for why this pod/container securityContext pair
+      # exists on every app-service Deployment.
+      securityContext:
+        runAsNonRoot: true
       containers:
         - name: inventory-service
           image: order-platform/inventory-service:local
@@ -43,6 +47,11 @@ spec:
                   key: POSTGRES_PASSWORD
             - name: KAFKA_BOOTSTRAP_SERVERS
               value: kafka:9092
+          securityContext:
+            allowPrivilegeEscalation: false
+            readOnlyRootFilesystem: true
+            capabilities:
+              drop: ["ALL"]
           resources:
             requests:
               memory: 256Mi
@@ -62,6 +71,12 @@ spec:
               port: 8082
             initialDelaySeconds: 40
             periodSeconds: 15
+          volumeMounts:
+            - name: tmp
+              mountPath: /tmp
+      volumes:
+        - name: tmp
+          emptyDir: {}
 ---
 apiVersion: v1
 kind: Service

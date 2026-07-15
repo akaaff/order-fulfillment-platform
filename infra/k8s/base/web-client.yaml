@@ -16,11 +16,34 @@ spec:
         app: web-client
     spec:
       serviceAccountName: web-client
+      # Pod-level securityContext applies to every container in the pod;
+      # runAsNonRoot here is what actually fails pod admission if the image
+      # ever regresses to running as root (nginxinc/nginx-unprivileged runs
+      # as uid 101 by default - not pinned here since letting the image
+      # supply its own designed-for-this uid is more robust than
+      # hardcoding a number that could drift across image updates).
+      securityContext:
+        runAsNonRoot: true
       containers:
         - name: web-client
           image: order-platform/web-client:local
           ports:
-            - containerPort: 80
+            - containerPort: 8080
+          # readOnlyRootFilesystem is only satisfiable because
+          # nginx-unprivileged's own config already points its writable
+          # paths (cache, pid file, client-body temp files) at /var/cache/nginx
+          # and /tmp - both mounted below as emptyDir so nginx can still write
+          # to them despite the rest of the filesystem being read-only.
+          securityContext:
+            allowPrivilegeEscalation: false
+            readOnlyRootFilesystem: true
+            capabilities:
+              drop: ["ALL"]
+          volumeMounts:
+            - name: nginx-cache
+              mountPath: /var/cache/nginx
+            - name: tmp
+              mountPath: /tmp
           resources:
             requests:
               memory: 32Mi
@@ -31,15 +54,20 @@ spec:
           readinessProbe:
             httpGet:
               path: /
-              port: 80
+              port: 8080
             initialDelaySeconds: 3
             periodSeconds: 10
           livenessProbe:
             httpGet:
               path: /
-              port: 80
+              port: 8080
             initialDelaySeconds: 10
             periodSeconds: 15
+      volumes:
+        - name: nginx-cache
+          emptyDir: {}
+        - name: tmp
+          emptyDir: {}
 ---
 apiVersion: v1
 kind: Service
@@ -51,4 +79,4 @@ spec:
     app: web-client
   ports:
     - port: 80
-      targetPort: 80
+      targetPort: 8080

@@ -1,0 +1,817 @@
+
+Report Summary
+
+┌────────────────────────────────────────────┬────────────┬───────────────────┐
+│                   Target                   │    Type    │ Misconfigurations │
+├────────────────────────────────────────────┼────────────┼───────────────────┤
+│ Dockerfile                                 │ dockerfile │         0         │
+├────────────────────────────────────────────┼────────────┼───────────────────┤
+│ infra/k8s/base/ai-support-agent.yaml       │ kubernetes │         3         │
+├────────────────────────────────────────────┼────────────┼───────────────────┤
+│ infra/k8s/base/api-gateway.yaml            │ kubernetes │         3         │
+├────────────────────────────────────────────┼────────────┼───────────────────┤
+│ infra/k8s/base/authorization-policies.yaml │ kubernetes │         0         │
+├────────────────────────────────────────────┼────────────┼───────────────────┤
+│ infra/k8s/base/couchbase-init-job.yaml     │ kubernetes │         3         │
+├────────────────────────────────────────────┼────────────┼───────────────────┤
+│ infra/k8s/base/couchbase.yaml              │ kubernetes │         3         │
+├────────────────────────────────────────────┼────────────┼───────────────────┤
+│ infra/k8s/base/elasticsearch.yaml          │ kubernetes │         3         │
+├────────────────────────────────────────────┼────────────┼───────────────────┤
+│ infra/k8s/base/ingress.yaml                │ kubernetes │         0         │
+├────────────────────────────────────────────┼────────────┼───────────────────┤
+│ infra/k8s/base/inventory-service.yaml      │ kubernetes │         3         │
+├────────────────────────────────────────────┼────────────┼───────────────────┤
+│ infra/k8s/base/kafka.yaml                  │ kubernetes │         3         │
+├────────────────────────────────────────────┼────────────┼───────────────────┤
+│ infra/k8s/base/namespace.yaml              │ kubernetes │         0         │
+├────────────────────────────────────────────┼────────────┼───────────────────┤
+│ infra/k8s/base/networkpolicies.yaml        │ kubernetes │         0         │
+├────────────────────────────────────────────┼────────────┼───────────────────┤
+│ infra/k8s/base/notification-service.yaml   │ kubernetes │         3         │
+├────────────────────────────────────────────┼────────────┼───────────────────┤
+│ infra/k8s/base/order-service.yaml          │ kubernetes │         3         │
+├────────────────────────────────────────────┼────────────┼───────────────────┤
+│ infra/k8s/base/postgres.yaml               │ kubernetes │         3         │
+├────────────────────────────────────────────┼────────────┼───────────────────┤
+│ infra/k8s/base/serviceaccounts.yaml        │ kubernetes │         0         │
+├────────────────────────────────────────────┼────────────┼───────────────────┤
+│ infra/k8s/base/web-client.yaml             │ kubernetes │         3         │
+├────────────────────────────────────────────┼────────────┼───────────────────┤
+│ web-client/Dockerfile                      │ dockerfile │         1         │
+└────────────────────────────────────────────┴────────────┴───────────────────┘
+Legend:
+- '-': Not scanned
+- '0': Clean (no security findings detected)
+
+
+infra/k8s/base/ai-support-agent.yaml (kubernetes)
+=================================================
+Tests: 26 (SUCCESSES: 23, FAILURES: 3)
+Failures: 3 (HIGH: 3, CRITICAL: 0)
+
+KSV-0014 (HIGH): Container 'ai-support-agent' of Deployment 'ai-support-agent' should set 'securityContext.readOnlyRootFilesystem' to true
+════════════════════════════════════════
+An immutable root file system prevents applications from writing to their local disk. This can limit intrusions, as attackers will not be able to tamper with the file system or write foreign executables to disk.
+
+See https://avd.aquasec.com/misconfig/ksv-0014
+────────────────────────────────────────
+ infra/k8s/base/ai-support-agent.yaml:20-56
+────────────────────────────────────────
+  20 ┌         - name: ai-support-agent
+  21 │           image: order-platform/ai-support-agent:local
+  22 │           ports:
+  23 │             - containerPort: 8084
+  24 │           env:
+  25 │             - name: ORDER_SERVICE_URL
+  26 │               value: http://order-service:8081
+  27 │             # Ollama runs on the host, not in-cluster - LLM inference is heavy
+  28 └             # for a laptop cluster. host.minikube.internal is minikube's
+  ..   
+────────────────────────────────────────
+
+
+KSV-0118 (HIGH): container ai-support-agent in order-platform namespace is using the default security context
+════════════════════════════════════════
+Security context controls the allocation of security parameters for the pod/container/volume, ensuring the appropriate level of protection. Relying on default security context may expose vulnerabilities to potential attacks that rely on privileged access.
+
+See https://avd.aquasec.com/misconfig/ksv-0118
+────────────────────────────────────────
+ infra/k8s/base/ai-support-agent.yaml:20-56
+────────────────────────────────────────
+  20 ┌         - name: ai-support-agent
+  21 │           image: order-platform/ai-support-agent:local
+  22 │           ports:
+  23 │             - containerPort: 8084
+  24 │           env:
+  25 │             - name: ORDER_SERVICE_URL
+  26 │               value: http://order-service:8081
+  27 │             # Ollama runs on the host, not in-cluster - LLM inference is heavy
+  28 └             # for a laptop cluster. host.minikube.internal is minikube's
+  ..   
+────────────────────────────────────────
+
+
+KSV-0118 (HIGH): deployment ai-support-agent in order-platform namespace is using the default security context, which allows root privileges
+════════════════════════════════════════
+Security context controls the allocation of security parameters for the pod/container/volume, ensuring the appropriate level of protection. Relying on default security context may expose vulnerabilities to potential attacks that rely on privileged access.
+
+See https://avd.aquasec.com/misconfig/ksv-0118
+────────────────────────────────────────
+ infra/k8s/base/ai-support-agent.yaml:17-60
+────────────────────────────────────────
+  17 ┌     spec:
+  18 │       serviceAccountName: ai-support-agent
+  19 │       containers:
+  20 │         - name: ai-support-agent
+  21 │           image: order-platform/ai-support-agent:local
+  22 │           ports:
+  23 │             - containerPort: 8084
+  24 │           env:
+  25 └             - name: ORDER_SERVICE_URL
+  ..   
+────────────────────────────────────────
+
+
+
+infra/k8s/base/api-gateway.yaml (kubernetes)
+============================================
+Tests: 26 (SUCCESSES: 23, FAILURES: 3)
+Failures: 3 (HIGH: 3, CRITICAL: 0)
+
+KSV-0014 (HIGH): Container 'api-gateway' of Deployment 'api-gateway' should set 'securityContext.readOnlyRootFilesystem' to true
+════════════════════════════════════════
+An immutable root file system prevents applications from writing to their local disk. This can limit intrusions, as attackers will not be able to tamper with the file system or write foreign executables to disk.
+
+See https://avd.aquasec.com/misconfig/ksv-0014
+────────────────────────────────────────
+ infra/k8s/base/api-gateway.yaml:20-61
+────────────────────────────────────────
+  20 ┌         - name: api-gateway
+  21 │           image: order-platform/api-gateway:local
+  22 │           ports:
+  23 │             - containerPort: 8080
+  24 │           env:
+  25 │             - name: ORDER_SERVICE_URL
+  26 │               value: http://order-service:8081
+  27 │             - name: INVENTORY_SERVICE_URL
+  28 └               value: http://inventory-service:8082
+  ..   
+────────────────────────────────────────
+
+
+KSV-0118 (HIGH): container api-gateway in order-platform namespace is using the default security context
+════════════════════════════════════════
+Security context controls the allocation of security parameters for the pod/container/volume, ensuring the appropriate level of protection. Relying on default security context may expose vulnerabilities to potential attacks that rely on privileged access.
+
+See https://avd.aquasec.com/misconfig/ksv-0118
+────────────────────────────────────────
+ infra/k8s/base/api-gateway.yaml:20-61
+────────────────────────────────────────
+  20 ┌         - name: api-gateway
+  21 │           image: order-platform/api-gateway:local
+  22 │           ports:
+  23 │             - containerPort: 8080
+  24 │           env:
+  25 │             - name: ORDER_SERVICE_URL
+  26 │               value: http://order-service:8081
+  27 │             - name: INVENTORY_SERVICE_URL
+  28 └               value: http://inventory-service:8082
+  ..   
+────────────────────────────────────────
+
+
+KSV-0118 (HIGH): deployment api-gateway in order-platform namespace is using the default security context, which allows root privileges
+════════════════════════════════════════
+Security context controls the allocation of security parameters for the pod/container/volume, ensuring the appropriate level of protection. Relying on default security context may expose vulnerabilities to potential attacks that rely on privileged access.
+
+See https://avd.aquasec.com/misconfig/ksv-0118
+────────────────────────────────────────
+ infra/k8s/base/api-gateway.yaml:17-65
+────────────────────────────────────────
+  17 ┌     spec:
+  18 │       serviceAccountName: api-gateway
+  19 │       containers:
+  20 │         - name: api-gateway
+  21 │           image: order-platform/api-gateway:local
+  22 │           ports:
+  23 │             - containerPort: 8080
+  24 │           env:
+  25 └             - name: ORDER_SERVICE_URL
+  ..   
+────────────────────────────────────────
+
+
+
+infra/k8s/base/couchbase-init-job.yaml (kubernetes)
+===================================================
+Tests: 24 (SUCCESSES: 21, FAILURES: 3)
+Failures: 3 (HIGH: 3, CRITICAL: 0)
+
+KSV-0014 (HIGH): Container 'couchbase-init' of Job 'couchbase-init' should set 'securityContext.readOnlyRootFilesystem' to true
+════════════════════════════════════════
+An immutable root file system prevents applications from writing to their local disk. This can limit intrusions, as attackers will not be able to tamper with the file system or write foreign executables to disk.
+
+See https://avd.aquasec.com/misconfig/ksv-0014
+────────────────────────────────────────
+ infra/k8s/base/couchbase-init-job.yaml:18-26
+────────────────────────────────────────
+  18 ┌         - name: couchbase-init
+  19 │           image: curlimages/curl:8.21.0
+  20 │           command: ["sh", "/scripts/couchbase-init.sh"]
+  21 │           envFrom:
+  22 │             - secretRef:
+  23 │                 name: couchbase-credentials
+  24 │           volumeMounts:
+  25 │             - name: init-script
+  26 └               mountPath: /scripts
+────────────────────────────────────────
+
+
+KSV-0118 (HIGH): container couchbase-init in order-platform namespace is using the default security context
+════════════════════════════════════════
+Security context controls the allocation of security parameters for the pod/container/volume, ensuring the appropriate level of protection. Relying on default security context may expose vulnerabilities to potential attacks that rely on privileged access.
+
+See https://avd.aquasec.com/misconfig/ksv-0118
+────────────────────────────────────────
+ infra/k8s/base/couchbase-init-job.yaml:18-26
+────────────────────────────────────────
+  18 ┌         - name: couchbase-init
+  19 │           image: curlimages/curl:8.21.0
+  20 │           command: ["sh", "/scripts/couchbase-init.sh"]
+  21 │           envFrom:
+  22 │             - secretRef:
+  23 │                 name: couchbase-credentials
+  24 │           volumeMounts:
+  25 │             - name: init-script
+  26 └               mountPath: /scripts
+────────────────────────────────────────
+
+
+KSV-0118 (HIGH): job couchbase-init in order-platform namespace is using the default security context, which allows root privileges
+════════════════════════════════════════
+Security context controls the allocation of security parameters for the pod/container/volume, ensuring the appropriate level of protection. Relying on default security context may expose vulnerabilities to potential attacks that rely on privileged access.
+
+See https://avd.aquasec.com/misconfig/ksv-0118
+────────────────────────────────────────
+ infra/k8s/base/couchbase-init-job.yaml:14-31
+────────────────────────────────────────
+  14 ┌     spec:
+  15 │       restartPolicy: Never
+  16 │       serviceAccountName: couchbase-init
+  17 │       containers:
+  18 │         - name: couchbase-init
+  19 │           image: curlimages/curl:8.21.0
+  20 │           command: ["sh", "/scripts/couchbase-init.sh"]
+  21 │           envFrom:
+  22 └             - secretRef:
+  ..   
+────────────────────────────────────────
+
+
+
+infra/k8s/base/couchbase.yaml (kubernetes)
+==========================================
+Tests: 26 (SUCCESSES: 23, FAILURES: 3)
+Failures: 3 (HIGH: 3, CRITICAL: 0)
+
+KSV-0014 (HIGH): Container 'couchbase' of Deployment 'couchbase' should set 'securityContext.readOnlyRootFilesystem' to true
+════════════════════════════════════════
+An immutable root file system prevents applications from writing to their local disk. This can limit intrusions, as attackers will not be able to tamper with the file system or write foreign executables to disk.
+
+See https://avd.aquasec.com/misconfig/ksv-0014
+────────────────────────────────────────
+ infra/k8s/base/couchbase.yaml:25-56
+────────────────────────────────────────
+  25 ┌         - name: couchbase
+  26 │           image: couchbase:community-7.6.0
+  27 │           ports:
+  28 │             - containerPort: 8091
+  29 │             - containerPort: 8092
+  30 │             - containerPort: 8093
+  31 │             - containerPort: 8094
+  32 │             - containerPort: 8095
+  33 └             - containerPort: 8096
+  ..   
+────────────────────────────────────────
+
+
+KSV-0118 (HIGH): container couchbase in order-platform namespace is using the default security context
+════════════════════════════════════════
+Security context controls the allocation of security parameters for the pod/container/volume, ensuring the appropriate level of protection. Relying on default security context may expose vulnerabilities to potential attacks that rely on privileged access.
+
+See https://avd.aquasec.com/misconfig/ksv-0118
+────────────────────────────────────────
+ infra/k8s/base/couchbase.yaml:25-56
+────────────────────────────────────────
+  25 ┌         - name: couchbase
+  26 │           image: couchbase:community-7.6.0
+  27 │           ports:
+  28 │             - containerPort: 8091
+  29 │             - containerPort: 8092
+  30 │             - containerPort: 8093
+  31 │             - containerPort: 8094
+  32 │             - containerPort: 8095
+  33 └             - containerPort: 8096
+  ..   
+────────────────────────────────────────
+
+
+KSV-0118 (HIGH): deployment couchbase in order-platform namespace is using the default security context, which allows root privileges
+════════════════════════════════════════
+Security context controls the allocation of security parameters for the pod/container/volume, ensuring the appropriate level of protection. Relying on default security context may expose vulnerabilities to potential attacks that rely on privileged access.
+
+See https://avd.aquasec.com/misconfig/ksv-0118
+────────────────────────────────────────
+ infra/k8s/base/couchbase.yaml:22-59
+────────────────────────────────────────
+  22 ┌     spec:
+  23 │       serviceAccountName: couchbase
+  24 │       containers:
+  25 │         - name: couchbase
+  26 │           image: couchbase:community-7.6.0
+  27 │           ports:
+  28 │             - containerPort: 8091
+  29 │             - containerPort: 8092
+  30 └             - containerPort: 8093
+  ..   
+────────────────────────────────────────
+
+
+
+infra/k8s/base/elasticsearch.yaml (kubernetes)
+==============================================
+Tests: 26 (SUCCESSES: 23, FAILURES: 3)
+Failures: 3 (HIGH: 3, CRITICAL: 0)
+
+KSV-0014 (HIGH): Container 'elasticsearch' of Deployment 'elasticsearch' should set 'securityContext.readOnlyRootFilesystem' to true
+════════════════════════════════════════
+An immutable root file system prevents applications from writing to their local disk. This can limit intrusions, as attackers will not be able to tamper with the file system or write foreign executables to disk.
+
+See https://avd.aquasec.com/misconfig/ksv-0014
+────────────────────────────────────────
+ infra/k8s/base/elasticsearch.yaml:20-74
+────────────────────────────────────────
+  20 ┌         - name: elasticsearch
+  21 │           # Pinned to the version Spring Boot 3.5.16's elasticsearch-java
+  22 │           # client is built against - see order-service's docker-compose note.
+  23 │           image: docker.elastic.co/elasticsearch/elasticsearch:8.18.8
+  24 │           ports:
+  25 │             - containerPort: 9200
+  26 │             - containerPort: 9300
+  27 │           env:
+  28 └             - name: discovery.type
+  ..   
+────────────────────────────────────────
+
+
+KSV-0118 (HIGH): container elasticsearch in order-platform namespace is using the default security context
+════════════════════════════════════════
+Security context controls the allocation of security parameters for the pod/container/volume, ensuring the appropriate level of protection. Relying on default security context may expose vulnerabilities to potential attacks that rely on privileged access.
+
+See https://avd.aquasec.com/misconfig/ksv-0118
+────────────────────────────────────────
+ infra/k8s/base/elasticsearch.yaml:20-74
+────────────────────────────────────────
+  20 ┌         - name: elasticsearch
+  21 │           # Pinned to the version Spring Boot 3.5.16's elasticsearch-java
+  22 │           # client is built against - see order-service's docker-compose note.
+  23 │           image: docker.elastic.co/elasticsearch/elasticsearch:8.18.8
+  24 │           ports:
+  25 │             - containerPort: 9200
+  26 │             - containerPort: 9300
+  27 │           env:
+  28 └             - name: discovery.type
+  ..   
+────────────────────────────────────────
+
+
+KSV-0118 (HIGH): deployment elasticsearch in order-platform namespace is using the default security context, which allows root privileges
+════════════════════════════════════════
+Security context controls the allocation of security parameters for the pod/container/volume, ensuring the appropriate level of protection. Relying on default security context may expose vulnerabilities to potential attacks that rely on privileged access.
+
+See https://avd.aquasec.com/misconfig/ksv-0118
+────────────────────────────────────────
+ infra/k8s/base/elasticsearch.yaml:17-77
+────────────────────────────────────────
+  17 ┌     spec:
+  18 │       serviceAccountName: elasticsearch
+  19 │       containers:
+  20 │         - name: elasticsearch
+  21 │           # Pinned to the version Spring Boot 3.5.16's elasticsearch-java
+  22 │           # client is built against - see order-service's docker-compose note.
+  23 │           image: docker.elastic.co/elasticsearch/elasticsearch:8.18.8
+  24 │           ports:
+  25 └             - containerPort: 9200
+  ..   
+────────────────────────────────────────
+
+
+
+infra/k8s/base/inventory-service.yaml (kubernetes)
+==================================================
+Tests: 26 (SUCCESSES: 23, FAILURES: 3)
+Failures: 3 (HIGH: 3, CRITICAL: 0)
+
+KSV-0014 (HIGH): Container 'inventory-service' of Deployment 'inventory-service' should set 'securityContext.readOnlyRootFilesystem' to true
+════════════════════════════════════════
+An immutable root file system prevents applications from writing to their local disk. This can limit intrusions, as attackers will not be able to tamper with the file system or write foreign executables to disk.
+
+See https://avd.aquasec.com/misconfig/ksv-0014
+────────────────────────────────────────
+ infra/k8s/base/inventory-service.yaml:20-64
+────────────────────────────────────────
+  20 ┌         - name: inventory-service
+  21 │           image: order-platform/inventory-service:local
+  22 │           ports:
+  23 │             - containerPort: 8082
+  24 │           env:
+  25 │             - name: POSTGRES_HOST
+  26 │               value: postgres
+  27 │             - name: POSTGRES_PORT
+  28 └               value: "5432"
+  ..   
+────────────────────────────────────────
+
+
+KSV-0118 (HIGH): container inventory-service in order-platform namespace is using the default security context
+════════════════════════════════════════
+Security context controls the allocation of security parameters for the pod/container/volume, ensuring the appropriate level of protection. Relying on default security context may expose vulnerabilities to potential attacks that rely on privileged access.
+
+See https://avd.aquasec.com/misconfig/ksv-0118
+────────────────────────────────────────
+ infra/k8s/base/inventory-service.yaml:20-64
+────────────────────────────────────────
+  20 ┌         - name: inventory-service
+  21 │           image: order-platform/inventory-service:local
+  22 │           ports:
+  23 │             - containerPort: 8082
+  24 │           env:
+  25 │             - name: POSTGRES_HOST
+  26 │               value: postgres
+  27 │             - name: POSTGRES_PORT
+  28 └               value: "5432"
+  ..   
+────────────────────────────────────────
+
+
+KSV-0118 (HIGH): deployment inventory-service in order-platform namespace is using the default security context, which allows root privileges
+════════════════════════════════════════
+Security context controls the allocation of security parameters for the pod/container/volume, ensuring the appropriate level of protection. Relying on default security context may expose vulnerabilities to potential attacks that rely on privileged access.
+
+See https://avd.aquasec.com/misconfig/ksv-0118
+────────────────────────────────────────
+ infra/k8s/base/inventory-service.yaml:17-64
+────────────────────────────────────────
+  17 ┌     spec:
+  18 │       serviceAccountName: inventory-service
+  19 │       containers:
+  20 │         - name: inventory-service
+  21 │           image: order-platform/inventory-service:local
+  22 │           ports:
+  23 │             - containerPort: 8082
+  24 │           env:
+  25 └             - name: POSTGRES_HOST
+  ..   
+────────────────────────────────────────
+
+
+
+infra/k8s/base/kafka.yaml (kubernetes)
+======================================
+Tests: 26 (SUCCESSES: 23, FAILURES: 3)
+Failures: 3 (HIGH: 3, CRITICAL: 0)
+
+KSV-0014 (HIGH): Container 'kafka' of Deployment 'kafka' should set 'securityContext.readOnlyRootFilesystem' to true
+════════════════════════════════════════
+An immutable root file system prevents applications from writing to their local disk. This can limit intrusions, as attackers will not be able to tamper with the file system or write foreign executables to disk.
+
+See https://avd.aquasec.com/misconfig/ksv-0014
+────────────────────────────────────────
+ infra/k8s/base/kafka.yaml:25-85
+────────────────────────────────────────
+  25 ┌         - name: kafka
+  26 │           image: apache/kafka:4.3.1
+  27 │           ports:
+  28 │             - containerPort: 9092
+  29 │             - containerPort: 9093
+  30 │           env:
+  31 │             - name: KAFKA_NODE_ID
+  32 │               value: "1"
+  33 └             - name: KAFKA_PROCESS_ROLES
+  ..   
+────────────────────────────────────────
+
+
+KSV-0118 (HIGH): container kafka in order-platform namespace is using the default security context
+════════════════════════════════════════
+Security context controls the allocation of security parameters for the pod/container/volume, ensuring the appropriate level of protection. Relying on default security context may expose vulnerabilities to potential attacks that rely on privileged access.
+
+See https://avd.aquasec.com/misconfig/ksv-0118
+────────────────────────────────────────
+ infra/k8s/base/kafka.yaml:25-85
+────────────────────────────────────────
+  25 ┌         - name: kafka
+  26 │           image: apache/kafka:4.3.1
+  27 │           ports:
+  28 │             - containerPort: 9092
+  29 │             - containerPort: 9093
+  30 │           env:
+  31 │             - name: KAFKA_NODE_ID
+  32 │               value: "1"
+  33 └             - name: KAFKA_PROCESS_ROLES
+  ..   
+────────────────────────────────────────
+
+
+KSV-0118 (HIGH): deployment kafka in order-platform namespace is using the default security context, which allows root privileges
+════════════════════════════════════════
+Security context controls the allocation of security parameters for the pod/container/volume, ensuring the appropriate level of protection. Relying on default security context may expose vulnerabilities to potential attacks that rely on privileged access.
+
+See https://avd.aquasec.com/misconfig/ksv-0118
+────────────────────────────────────────
+ infra/k8s/base/kafka.yaml:22-88
+────────────────────────────────────────
+  22 ┌     spec:
+  23 │       serviceAccountName: kafka
+  24 │       containers:
+  25 │         - name: kafka
+  26 │           image: apache/kafka:4.3.1
+  27 │           ports:
+  28 │             - containerPort: 9092
+  29 │             - containerPort: 9093
+  30 └           env:
+  ..   
+────────────────────────────────────────
+
+
+
+infra/k8s/base/notification-service.yaml (kubernetes)
+=====================================================
+Tests: 26 (SUCCESSES: 23, FAILURES: 3)
+Failures: 3 (HIGH: 3, CRITICAL: 0)
+
+KSV-0014 (HIGH): Container 'notification-service' of Deployment 'notification-service' should set 'securityContext.readOnlyRootFilesystem' to true
+════════════════════════════════════════
+An immutable root file system prevents applications from writing to their local disk. This can limit intrusions, as attackers will not be able to tamper with the file system or write foreign executables to disk.
+
+See https://avd.aquasec.com/misconfig/ksv-0014
+────────────────────────────────────────
+ infra/k8s/base/notification-service.yaml:20-45
+────────────────────────────────────────
+  20 ┌         - name: notification-service
+  21 │           image: order-platform/notification-service:local
+  22 │           ports:
+  23 │             - containerPort: 8083
+  24 │           env:
+  25 │             - name: KAFKA_BOOTSTRAP_SERVERS
+  26 │               value: kafka:9092
+  27 │           resources:
+  28 └             requests:
+  ..   
+────────────────────────────────────────
+
+
+KSV-0118 (HIGH): container notification-service in order-platform namespace is using the default security context
+════════════════════════════════════════
+Security context controls the allocation of security parameters for the pod/container/volume, ensuring the appropriate level of protection. Relying on default security context may expose vulnerabilities to potential attacks that rely on privileged access.
+
+See https://avd.aquasec.com/misconfig/ksv-0118
+────────────────────────────────────────
+ infra/k8s/base/notification-service.yaml:20-45
+────────────────────────────────────────
+  20 ┌         - name: notification-service
+  21 │           image: order-platform/notification-service:local
+  22 │           ports:
+  23 │             - containerPort: 8083
+  24 │           env:
+  25 │             - name: KAFKA_BOOTSTRAP_SERVERS
+  26 │               value: kafka:9092
+  27 │           resources:
+  28 └             requests:
+  ..   
+────────────────────────────────────────
+
+
+KSV-0118 (HIGH): deployment notification-service in order-platform namespace is using the default security context, which allows root privileges
+════════════════════════════════════════
+Security context controls the allocation of security parameters for the pod/container/volume, ensuring the appropriate level of protection. Relying on default security context may expose vulnerabilities to potential attacks that rely on privileged access.
+
+See https://avd.aquasec.com/misconfig/ksv-0118
+────────────────────────────────────────
+ infra/k8s/base/notification-service.yaml:17-45
+────────────────────────────────────────
+  17 ┌     spec:
+  18 │       serviceAccountName: notification-service
+  19 │       containers:
+  20 │         - name: notification-service
+  21 │           image: order-platform/notification-service:local
+  22 │           ports:
+  23 │             - containerPort: 8083
+  24 │           env:
+  25 └             - name: KAFKA_BOOTSTRAP_SERVERS
+  ..   
+────────────────────────────────────────
+
+
+
+infra/k8s/base/order-service.yaml (kubernetes)
+==============================================
+Tests: 26 (SUCCESSES: 23, FAILURES: 3)
+Failures: 3 (HIGH: 3, CRITICAL: 0)
+
+KSV-0014 (HIGH): Container 'order-service' of Deployment 'order-service' should set 'securityContext.readOnlyRootFilesystem' to true
+════════════════════════════════════════
+An immutable root file system prevents applications from writing to their local disk. This can limit intrusions, as attackers will not be able to tamper with the file system or write foreign executables to disk.
+
+See https://avd.aquasec.com/misconfig/ksv-0014
+────────────────────────────────────────
+ infra/k8s/base/order-service.yaml:20-65
+────────────────────────────────────────
+  20 ┌         - name: order-service
+  21 │           image: order-platform/order-service:local
+  22 │           ports:
+  23 │             - containerPort: 8081
+  24 │           env:
+  25 │             - name: COUCHBASE_CONNECTION_STRING
+  26 │               value: couchbase://couchbase
+  27 │             - name: COUCHBASE_ADMIN_USER
+  28 └               valueFrom:
+  ..   
+────────────────────────────────────────
+
+
+KSV-0118 (HIGH): container order-service in order-platform namespace is using the default security context
+════════════════════════════════════════
+Security context controls the allocation of security parameters for the pod/container/volume, ensuring the appropriate level of protection. Relying on default security context may expose vulnerabilities to potential attacks that rely on privileged access.
+
+See https://avd.aquasec.com/misconfig/ksv-0118
+────────────────────────────────────────
+ infra/k8s/base/order-service.yaml:20-65
+────────────────────────────────────────
+  20 ┌         - name: order-service
+  21 │           image: order-platform/order-service:local
+  22 │           ports:
+  23 │             - containerPort: 8081
+  24 │           env:
+  25 │             - name: COUCHBASE_CONNECTION_STRING
+  26 │               value: couchbase://couchbase
+  27 │             - name: COUCHBASE_ADMIN_USER
+  28 └               valueFrom:
+  ..   
+────────────────────────────────────────
+
+
+KSV-0118 (HIGH): deployment order-service in order-platform namespace is using the default security context, which allows root privileges
+════════════════════════════════════════
+Security context controls the allocation of security parameters for the pod/container/volume, ensuring the appropriate level of protection. Relying on default security context may expose vulnerabilities to potential attacks that rely on privileged access.
+
+See https://avd.aquasec.com/misconfig/ksv-0118
+────────────────────────────────────────
+ infra/k8s/base/order-service.yaml:17-69
+────────────────────────────────────────
+  17 ┌     spec:
+  18 │       serviceAccountName: order-service
+  19 │       containers:
+  20 │         - name: order-service
+  21 │           image: order-platform/order-service:local
+  22 │           ports:
+  23 │             - containerPort: 8081
+  24 │           env:
+  25 └             - name: COUCHBASE_CONNECTION_STRING
+  ..   
+────────────────────────────────────────
+
+
+
+infra/k8s/base/postgres.yaml (kubernetes)
+=========================================
+Tests: 26 (SUCCESSES: 23, FAILURES: 3)
+Failures: 3 (HIGH: 3, CRITICAL: 0)
+
+KSV-0014 (HIGH): Container 'postgres' of Deployment 'postgres' should set 'securityContext.readOnlyRootFilesystem' to true
+════════════════════════════════════════
+An immutable root file system prevents applications from writing to their local disk. This can limit intrusions, as attackers will not be able to tamper with the file system or write foreign executables to disk.
+
+See https://avd.aquasec.com/misconfig/ksv-0014
+────────────────────────────────────────
+ infra/k8s/base/postgres.yaml:22-53
+────────────────────────────────────────
+  22 ┌         - name: postgres
+  23 │           image: postgres:17.10-bookworm
+  24 │           ports:
+  25 │             - containerPort: 5432
+  26 │           envFrom:
+  27 │             - secretRef:
+  28 │                 name: postgres-credentials
+  29 │           resources:
+  30 └             requests:
+  ..   
+────────────────────────────────────────
+
+
+KSV-0118 (HIGH): container postgres in order-platform namespace is using the default security context
+════════════════════════════════════════
+Security context controls the allocation of security parameters for the pod/container/volume, ensuring the appropriate level of protection. Relying on default security context may expose vulnerabilities to potential attacks that rely on privileged access.
+
+See https://avd.aquasec.com/misconfig/ksv-0118
+────────────────────────────────────────
+ infra/k8s/base/postgres.yaml:22-53
+────────────────────────────────────────
+  22 ┌         - name: postgres
+  23 │           image: postgres:17.10-bookworm
+  24 │           ports:
+  25 │             - containerPort: 5432
+  26 │           envFrom:
+  27 │             - secretRef:
+  28 │                 name: postgres-credentials
+  29 │           resources:
+  30 └             requests:
+  ..   
+────────────────────────────────────────
+
+
+KSV-0118 (HIGH): deployment postgres in order-platform namespace is using the default security context, which allows root privileges
+════════════════════════════════════════
+Security context controls the allocation of security parameters for the pod/container/volume, ensuring the appropriate level of protection. Relying on default security context may expose vulnerabilities to potential attacks that rely on privileged access.
+
+See https://avd.aquasec.com/misconfig/ksv-0118
+────────────────────────────────────────
+ infra/k8s/base/postgres.yaml:19-56
+────────────────────────────────────────
+  19 ┌     spec:
+  20 │       serviceAccountName: postgres
+  21 │       containers:
+  22 │         - name: postgres
+  23 │           image: postgres:17.10-bookworm
+  24 │           ports:
+  25 │             - containerPort: 5432
+  26 │           envFrom:
+  27 └             - secretRef:
+  ..   
+────────────────────────────────────────
+
+
+
+infra/k8s/base/web-client.yaml (kubernetes)
+===========================================
+Tests: 26 (SUCCESSES: 23, FAILURES: 3)
+Failures: 3 (HIGH: 3, CRITICAL: 0)
+
+KSV-0014 (HIGH): Container 'web-client' of Deployment 'web-client' should set 'securityContext.readOnlyRootFilesystem' to true
+════════════════════════════════════════
+An immutable root file system prevents applications from writing to their local disk. This can limit intrusions, as attackers will not be able to tamper with the file system or write foreign executables to disk.
+
+See https://avd.aquasec.com/misconfig/ksv-0014
+────────────────────────────────────────
+ infra/k8s/base/web-client.yaml:20-42
+────────────────────────────────────────
+  20 ┌         - name: web-client
+  21 │           image: order-platform/web-client:local
+  22 │           ports:
+  23 │             - containerPort: 80
+  24 │           resources:
+  25 │             requests:
+  26 │               memory: 32Mi
+  27 │               cpu: 50m
+  28 └             limits:
+  ..   
+────────────────────────────────────────
+
+
+KSV-0118 (HIGH): container web-client in order-platform namespace is using the default security context
+════════════════════════════════════════
+Security context controls the allocation of security parameters for the pod/container/volume, ensuring the appropriate level of protection. Relying on default security context may expose vulnerabilities to potential attacks that rely on privileged access.
+
+See https://avd.aquasec.com/misconfig/ksv-0118
+────────────────────────────────────────
+ infra/k8s/base/web-client.yaml:20-42
+────────────────────────────────────────
+  20 ┌         - name: web-client
+  21 │           image: order-platform/web-client:local
+  22 │           ports:
+  23 │             - containerPort: 80
+  24 │           resources:
+  25 │             requests:
+  26 │               memory: 32Mi
+  27 │               cpu: 50m
+  28 └             limits:
+  ..   
+────────────────────────────────────────
+
+
+KSV-0118 (HIGH): deployment web-client in order-platform namespace is using the default security context, which allows root privileges
+════════════════════════════════════════
+Security context controls the allocation of security parameters for the pod/container/volume, ensuring the appropriate level of protection. Relying on default security context may expose vulnerabilities to potential attacks that rely on privileged access.
+
+See https://avd.aquasec.com/misconfig/ksv-0118
+────────────────────────────────────────
+ infra/k8s/base/web-client.yaml:17-42
+────────────────────────────────────────
+  17 ┌     spec:
+  18 │       serviceAccountName: web-client
+  19 │       containers:
+  20 │         - name: web-client
+  21 │           image: order-platform/web-client:local
+  22 │           ports:
+  23 │             - containerPort: 80
+  24 │           resources:
+  25 └             requests:
+  ..   
+────────────────────────────────────────
+
+
+
+web-client/Dockerfile (dockerfile)
+==================================
+Tests: 20 (SUCCESSES: 19, FAILURES: 1)
+Failures: 1 (HIGH: 1, CRITICAL: 0)
+
+DS-0002 (HIGH): Specify at least 1 USER command in Dockerfile with non-root user as argument
+════════════════════════════════════════
+Running containers with 'root' user can lead to a container escape situation. It is a best practice to run containers as non-root users, which can be done by adding a 'USER' statement to the Dockerfile.
+
+See https://avd.aquasec.com/misconfig/ds-0002
+────────────────────────────────────────
+
+

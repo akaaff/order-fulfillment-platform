@@ -93,6 +93,29 @@ spec:
             matchLabels:
               app: order-service
 ---
+# Separate from the rule above (couchbase-init has no business reaching
+# elasticsearch, only couchbase's admin/query ports for one-time cluster
+# bootstrap). Found missing - and confirmed NetworkPolicy is genuinely
+# enforced, not just written - when this exact gap blocked couchbase-init's
+# traffic once Cilium started actually enforcing these policies (see
+# CLAUDE.md's networking section for the full story).
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: allow-couchbase-init-to-couchbase
+  namespace: order-platform
+spec:
+  podSelector:
+    matchLabels:
+      app: couchbase
+  policyTypes:
+    - Ingress
+  ingress:
+    - from:
+        - podSelector:
+            matchLabels:
+              app: couchbase-init
+---
 # Kafka is the one datastore all three event-driven services need - unlike
 # Couchbase/Elasticsearch/Postgres, which are each owned by a single service.
 apiVersion: networking.k8s.io/v1

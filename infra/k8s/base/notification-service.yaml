@@ -16,6 +16,10 @@ spec:
         app: notification-service
     spec:
       serviceAccountName: notification-service
+      # See api-gateway.yaml for why this pod/container securityContext pair
+      # exists on every app-service Deployment.
+      securityContext:
+        runAsNonRoot: true
       containers:
         - name: notification-service
           image: order-platform/notification-service:local
@@ -24,6 +28,11 @@ spec:
           env:
             - name: KAFKA_BOOTSTRAP_SERVERS
               value: kafka:9092
+          securityContext:
+            allowPrivilegeEscalation: false
+            readOnlyRootFilesystem: true
+            capabilities:
+              drop: ["ALL"]
           resources:
             requests:
               memory: 192Mi
@@ -43,6 +52,12 @@ spec:
               port: 8083
             initialDelaySeconds: 30
             periodSeconds: 15
+          volumeMounts:
+            - name: tmp
+              mountPath: /tmp
+      volumes:
+        - name: tmp
+          emptyDir: {}
 ---
 apiVersion: v1
 kind: Service

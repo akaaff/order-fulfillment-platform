@@ -32,6 +32,11 @@ spec:
             - containerPort: 8095
             - containerPort: 8096
             - containerPort: 11210
+          # See postgres.yaml's securityContext comment - same reasoning
+          # applies here (Couchbase's entrypoint needs root to initialize a
+          # fresh emptyDir data directory).
+          securityContext:
+            allowPrivilegeEscalation: false
           resources:
             requests:
               memory: 768Mi
