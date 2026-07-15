@@ -5,6 +5,7 @@ namespace: order-platform
 
 resources:
   - namespace.yaml
+  - serviceaccounts.yaml
   - kafka.yaml
   - postgres.yaml
   - elasticsearch.yaml
@@ -18,6 +19,7 @@ resources:
   - web-client.yaml
   - ingress.yaml
   - networkpolicies.yaml
+  - authorization-policies.yaml
 
 # Generated from the single source-of-truth script also used by
 # infra/docker-compose.yml, so the two environments can't drift apart.

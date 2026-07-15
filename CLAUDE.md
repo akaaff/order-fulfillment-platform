@@ -308,6 +308,88 @@ CNI doesn't implement `NetworkPolicy`. They're written and applied so the intent
 they'll take effect once a policy-enforcing CNI (e.g. Calico) is installed, deferred to the
 security-hardening pass.
 
+## Service mesh mTLS (Linkerd)
+
+Every pod in `order-platform` gets a `linkerd-proxy` sidecar auto-injected (namespace-level
+`linkerd.io/inject: enabled` annotation in `infra/k8s/base/namespace.yaml`), giving every
+service-to-service call in the cluster mutual TLS with a verified peer identity — **enforced right
+now**, unlike the NetworkPolicies above, since it doesn't depend on the CNI at all; each proxy
+enforces it locally regardless of what the network layer does. The two layers are deliberately
+complementary: NetworkPolicies are coarse L3/L4 "which pod IPs can reach which" (currently inert
+here); Linkerd's `AuthorizationPolicy` is identity-based L7/mTLS "which verified workload identity
+can reach which" (active today). Verified via `linkerd check --proxy -n order-platform` (clean) and
+by reading each proxy's own metrics
+(`linkerd diagnostics proxy-metrics -n order-platform po/<pod>`, grep for `tls="true"` plus a
+`server_id=...serviceaccount.identity.linkerd.cluster.local` on outbound connections) — this
+confirms real mTLS on both HTTP traffic (Couchbase's REST ports, Elasticsearch) and the
+binary/opaque ones (Kafka, Postgres) alike, not just a superficial check.
+
+**Linkerd install prerequisites** (edge-26.6.3, since Linkerd no longer ships a separate "stable"
+channel — edge is the current recommended install): the Gateway API CRDs must exist *before*
+`linkerd install --crds` (`kubectl apply --server-side -f
+https://github.com/kubernetes-sigs/gateway-api/releases/download/v1.2.1/standard-install.yaml`), and
+`linkerd install` itself needs `--set proxyInit.runAsRoot=true` on minikube's `docker` driver
+(without it: "there are nodes using the docker container runtime and proxy-init container must run
+as root user").
+
+**Deliberately did not install the `linkerd-viz` extension** (the Prometheus-backed
+dashboard/metrics-history extension) — Day 7 already hit real OOM/resource-pressure limits on this
+single-node cluster, and Prometheus's footprint isn't justified just to prove mTLS is working when
+`linkerd check --proxy` and `diagnostics proxy-metrics` prove it directly, for free, using tools
+already installed. In practice each `linkerd-proxy` sidecar only costs ~3-6MiB RSS at idle — the
+mesh itself was never the resource risk here, viz would have been.
+
+**Opaque ports for binary protocols**: Kafka (9092/9093), Postgres (5432), and Couchbase's KV port
+(11210) all speak binary wire protocols, not HTTP — without `config.linkerd.io/opaque-ports`,
+Linkerd's protocol-sniffing adds a per-connection detection delay. This needs setting in **two
+places, not one**: the Service's annotation (read by *calling* proxies doing outbound discovery) and
+the same annotation directly on the pod template (read by that workload's *own* inbound proxy) —
+Service-level alone left `linkerd check --proxy` still flagging the pod until the workload was
+recreated with the pod-level annotation too. Couchbase's other ports (8091 mgmt, 8093 query) are
+HTTP-based REST/N1QL APIs and don't need this.
+
+**ServiceAccount-per-workload is required, not optional, for AuthorizationPolicy to mean anything**:
+every Deployment originally ran under the auto-mounted `default` ServiceAccount, and Linkerd derives
+each pod's mesh identity from its ServiceAccount
+(`<name>.<namespace>.serviceaccount.identity.linkerd.cluster.local`) — with everything on `default`,
+every workload would present the *same* identity, making "only api-gateway may call order-service"
+impossible to express. `infra/k8s/base/serviceaccounts.yaml` gives every workload (plus the
+couchbase-init Job, on its own distinct identity) a dedicated ServiceAccount with zero RBAC
+permissions attached — they exist purely as mesh identities, nothing in this app calls the
+Kubernetes API.
+
+**`AuthorizationPolicy.spec.requiredAuthenticationRefs` is AND'd across entries, not OR'd** — every
+listed authentication must be satisfied by the *same* connection, so it cannot be used to mean "any
+of these callers is fine." Where a `Server` legitimately needs to accept more than one caller
+identity (e.g. order-service is called by both api-gateway and ai-support-agent), that whole set
+must live inside a *single* `MeshTLSAuthentication`'s `identityRefs` list instead — a list within one
+object genuinely is OR-matched. Got this backwards on the first pass (two separate
+`MeshTLSAuthentication` refs on one policy), which would have made the route uncallable by anyone;
+`infra/k8s/base/authorization-policies.yaml`'s `order-service-authorized-clients` and
+`couchbase-admin-clients` are the corrected, combined form.
+
+**Couchbase's mgmt port (8091) is needed by order-service itself, not just the bootstrap Job**: the
+Couchbase Java SDK always opens a connection to 8091 for cluster topology/bucket-config polling as
+part of its normal startup, even though actual document reads/writes go over the KV port (11210).
+Scoping `couchbase-mgmt-server`'s `AuthorizationPolicy` to only `couchbase-init`'s identity looked
+reasonable by the port's *name* but broke order-service's own startup (restart-looping on
+`linkerd-proxy` logging `"unauthorized request on route"` against 8091) — found by reading the
+*couchbase* pod's own proxy logs (the rejecting side), not order-service's. Fixed by allowing both
+identities on that Server, matching what the query Server (8093) already needed for the same reason
+(order-service's `OutboxRelay` polls via N1QL at runtime; the bootstrap Job also runs N1QL once for
+index creation).
+
+**Couchbase and Postgres both use `emptyDir` storage (ephemeral by design, see the minikube
+deployment section above)** — every time either pod is recreated (a mesh-injection rollout, an
+opaque-ports pod-template change, anything that replaces the pod rather than just restarting the
+container), Couchbase loses its bootstrapped cluster/bucket/users and Postgres starts from a truly
+empty data directory. Postgres self-reinitializes from `POSTGRES_USER`/`POSTGRES_PASSWORD` env vars
+on every fresh start, so it needs nothing further. Couchbase does not: `infra/k8s/base/couchbase-init-job.yaml`'s
+Job must be deleted and recreated (`kubectl delete job couchbase-init` then re-`apply -k`) after
+every Couchbase pod recreation, or order-service will fail SASL authentication against a
+bucket/user that no longer exists. This bit us three separate times while rolling out the mesh and
+its policies — worth remembering before any future change that touches Couchbase's Deployment spec.
+
 ## Conventions to keep consistent
 
 - **This code is a portfolio artifact meant to be read by strangers (interviewers/reviewers), not

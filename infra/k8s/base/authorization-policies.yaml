@@ -1,0 +1,426 @@
+# Linkerd's identity-based authorization layer - unlike networkpolicies.yaml
+# (L3/L4, currently inert - see that file's comment on minikube's CNI), these
+# ARE enforced right now: each linkerd-proxy sidecar checks the caller's
+# verified mTLS identity against these rules before accepting inbound
+# traffic, independent of the cluster's CNI. The two layers are deliberately
+# complementary, not redundant - see CLAUDE.md.
+#
+# api-gateway and web-client are NOT given a Server/AuthorizationPolicy here:
+# they must keep accepting unauthenticated inbound traffic, since the
+# ingress-nginx controller lives in a different, unmeshed namespace and calls
+# them with no mesh identity at all. Every other workload below only accepts
+# traffic from specific, named meshed identities.
+
+# --- Servers: the (pod selector, port) pairs being protected ---
+
+apiVersion: policy.linkerd.io/v1beta3
+kind: Server
+metadata:
+  name: order-service-server
+  namespace: order-platform
+spec:
+  podSelector:
+    matchLabels:
+      app: order-service
+  port: 8081
+  proxyProtocol: HTTP/1
+---
+apiVersion: policy.linkerd.io/v1beta3
+kind: Server
+metadata:
+  name: inventory-service-server
+  namespace: order-platform
+spec:
+  podSelector:
+    matchLabels:
+      app: inventory-service
+  port: 8082
+  proxyProtocol: HTTP/1
+---
+apiVersion: policy.linkerd.io/v1beta3
+kind: Server
+metadata:
+  name: notification-service-server
+  namespace: order-platform
+spec:
+  podSelector:
+    matchLabels:
+      app: notification-service
+  port: 8083
+  proxyProtocol: HTTP/1
+---
+apiVersion: policy.linkerd.io/v1beta3
+kind: Server
+metadata:
+  name: ai-support-agent-server
+  namespace: order-platform
+spec:
+  podSelector:
+    matchLabels:
+      app: ai-support-agent
+  port: 8084
+  proxyProtocol: HTTP/1
+---
+apiVersion: policy.linkerd.io/v1beta3
+kind: Server
+metadata:
+  name: postgres-server
+  namespace: order-platform
+spec:
+  podSelector:
+    matchLabels:
+      app: postgres
+  port: 5432
+  proxyProtocol: opaque
+---
+apiVersion: policy.linkerd.io/v1beta3
+kind: Server
+metadata:
+  name: kafka-broker-server
+  namespace: order-platform
+spec:
+  podSelector:
+    matchLabels:
+      app: kafka
+  port: 9092
+  proxyProtocol: opaque
+---
+apiVersion: policy.linkerd.io/v1beta3
+kind: Server
+metadata:
+  name: kafka-controller-server
+  namespace: order-platform
+spec:
+  podSelector:
+    matchLabels:
+      app: kafka
+  port: 9093
+  proxyProtocol: opaque
+---
+# Couchbase's admin/mgmt REST API - only the one-shot bootstrap Job calls
+# this, never the app services at request time.
+apiVersion: policy.linkerd.io/v1beta3
+kind: Server
+metadata:
+  name: couchbase-mgmt-server
+  namespace: order-platform
+spec:
+  podSelector:
+    matchLabels:
+      app: couchbase
+  port: 8091
+  proxyProtocol: HTTP/1
+---
+# Couchbase's N1QL query service - used by the bootstrap Job (index
+# creation) AND by order-service's OutboxRelay at runtime (polls the outbox
+# via a N1QL query, not the KV API).
+apiVersion: policy.linkerd.io/v1beta3
+kind: Server
+metadata:
+  name: couchbase-query-server
+  namespace: order-platform
+spec:
+  podSelector:
+    matchLabels:
+      app: couchbase
+  port: 8093
+  proxyProtocol: HTTP/1
+---
+# Couchbase's binary KV protocol - order-service's document reads/writes and
+# multi-document ACID transactions.
+apiVersion: policy.linkerd.io/v1beta3
+kind: Server
+metadata:
+  name: couchbase-kv-server
+  namespace: order-platform
+spec:
+  podSelector:
+    matchLabels:
+      app: couchbase
+  port: 11210
+  proxyProtocol: opaque
+---
+apiVersion: policy.linkerd.io/v1beta3
+kind: Server
+metadata:
+  name: elasticsearch-server
+  namespace: order-platform
+spec:
+  podSelector:
+    matchLabels:
+      app: elasticsearch
+  port: 9200
+  proxyProtocol: HTTP/1
+
+# --- MeshTLSAuthentications: named groups of caller identities ---
+
+---
+apiVersion: policy.linkerd.io/v1alpha1
+kind: MeshTLSAuthentication
+metadata:
+  name: gateway-clients
+  namespace: order-platform
+spec:
+  identityRefs:
+    - kind: ServiceAccount
+      name: api-gateway
+      namespace: order-platform
+---
+# NOTE: an AuthorizationPolicy's requiredAuthenticationRefs list is AND'd
+# (every entry must be satisfied by the same connection) - it is NOT a way
+# to OR together multiple allowed caller groups. Where a Server needs to
+# accept more than one caller identity, that whole set is listed inside a
+# single MeshTLSAuthentication instead (identityRefs within one object IS
+# OR-matched), like this one for order-service's two legitimate callers.
+apiVersion: policy.linkerd.io/v1alpha1
+kind: MeshTLSAuthentication
+metadata:
+  name: order-service-authorized-clients
+  namespace: order-platform
+spec:
+  identityRefs:
+    - kind: ServiceAccount
+      name: api-gateway
+      namespace: order-platform
+    - kind: ServiceAccount
+      name: ai-support-agent
+      namespace: order-platform
+---
+apiVersion: policy.linkerd.io/v1alpha1
+kind: MeshTLSAuthentication
+metadata:
+  name: order-service-clients
+  namespace: order-platform
+spec:
+  identityRefs:
+    - kind: ServiceAccount
+      name: order-service
+      namespace: order-platform
+---
+# Combined caller set for both the mgmt and query Servers (see the AND/OR
+# note above) - order-service needs both (mgmt for the Couchbase SDK's
+# cluster/bucket-config bootstrap, query for the OutboxRelay's N1QL polling),
+# couchbase-init needs both once at cluster bootstrap.
+apiVersion: policy.linkerd.io/v1alpha1
+kind: MeshTLSAuthentication
+metadata:
+  name: couchbase-admin-clients
+  namespace: order-platform
+spec:
+  identityRefs:
+    - kind: ServiceAccount
+      name: order-service
+      namespace: order-platform
+    - kind: ServiceAccount
+      name: couchbase-init
+      namespace: order-platform
+---
+apiVersion: policy.linkerd.io/v1alpha1
+kind: MeshTLSAuthentication
+metadata:
+  name: inventory-service-clients
+  namespace: order-platform
+spec:
+  identityRefs:
+    - kind: ServiceAccount
+      name: inventory-service
+      namespace: order-platform
+---
+# Kafka is the one datastore all three event-driven services need (mirrors
+# networkpolicies.yaml's allow-event-driven-services-to-kafka) - and Kafka's
+# own identity is included since this single-pod broker+controller must
+# reach itself via the Service to register as controller (see kafka.yaml's
+# headless-Service comment).
+apiVersion: policy.linkerd.io/v1alpha1
+kind: MeshTLSAuthentication
+metadata:
+  name: event-driven-clients
+  namespace: order-platform
+spec:
+  identityRefs:
+    - kind: ServiceAccount
+      name: order-service
+      namespace: order-platform
+    - kind: ServiceAccount
+      name: inventory-service
+      namespace: order-platform
+    - kind: ServiceAccount
+      name: notification-service
+      namespace: order-platform
+    - kind: ServiceAccount
+      name: kafka
+      namespace: order-platform
+
+# --- AuthorizationPolicies: bind each Server to its allowed callers ---
+
+---
+apiVersion: policy.linkerd.io/v1alpha1
+kind: AuthorizationPolicy
+metadata:
+  name: order-service-authz
+  namespace: order-platform
+spec:
+  targetRef:
+    group: policy.linkerd.io
+    kind: Server
+    name: order-service-server
+  requiredAuthenticationRefs:
+    - group: policy.linkerd.io
+      kind: MeshTLSAuthentication
+      name: order-service-authorized-clients
+---
+apiVersion: policy.linkerd.io/v1alpha1
+kind: AuthorizationPolicy
+metadata:
+  name: inventory-service-authz
+  namespace: order-platform
+spec:
+  targetRef:
+    group: policy.linkerd.io
+    kind: Server
+    name: inventory-service-server
+  requiredAuthenticationRefs:
+    - group: policy.linkerd.io
+      kind: MeshTLSAuthentication
+      name: gateway-clients
+---
+apiVersion: policy.linkerd.io/v1alpha1
+kind: AuthorizationPolicy
+metadata:
+  name: notification-service-authz
+  namespace: order-platform
+spec:
+  targetRef:
+    group: policy.linkerd.io
+    kind: Server
+    name: notification-service-server
+  requiredAuthenticationRefs:
+    - group: policy.linkerd.io
+      kind: MeshTLSAuthentication
+      name: gateway-clients
+---
+apiVersion: policy.linkerd.io/v1alpha1
+kind: AuthorizationPolicy
+metadata:
+  name: ai-support-agent-authz
+  namespace: order-platform
+spec:
+  targetRef:
+    group: policy.linkerd.io
+    kind: Server
+    name: ai-support-agent-server
+  requiredAuthenticationRefs:
+    - group: policy.linkerd.io
+      kind: MeshTLSAuthentication
+      name: gateway-clients
+---
+apiVersion: policy.linkerd.io/v1alpha1
+kind: AuthorizationPolicy
+metadata:
+  name: postgres-authz
+  namespace: order-platform
+spec:
+  targetRef:
+    group: policy.linkerd.io
+    kind: Server
+    name: postgres-server
+  requiredAuthenticationRefs:
+    - group: policy.linkerd.io
+      kind: MeshTLSAuthentication
+      name: inventory-service-clients
+---
+apiVersion: policy.linkerd.io/v1alpha1
+kind: AuthorizationPolicy
+metadata:
+  name: kafka-broker-authz
+  namespace: order-platform
+spec:
+  targetRef:
+    group: policy.linkerd.io
+    kind: Server
+    name: kafka-broker-server
+  requiredAuthenticationRefs:
+    - group: policy.linkerd.io
+      kind: MeshTLSAuthentication
+      name: event-driven-clients
+---
+apiVersion: policy.linkerd.io/v1alpha1
+kind: AuthorizationPolicy
+metadata:
+  name: kafka-controller-authz
+  namespace: order-platform
+spec:
+  targetRef:
+    group: policy.linkerd.io
+    kind: Server
+    name: kafka-controller-server
+  requiredAuthenticationRefs:
+    - group: policy.linkerd.io
+      kind: MeshTLSAuthentication
+      name: event-driven-clients
+---
+apiVersion: policy.linkerd.io/v1alpha1
+kind: AuthorizationPolicy
+metadata:
+  name: couchbase-mgmt-authz
+  namespace: order-platform
+spec:
+  targetRef:
+    group: policy.linkerd.io
+    kind: Server
+    name: couchbase-mgmt-server
+  # The Couchbase Java SDK always connects to the mgmt port (8091) for
+  # cluster topology/bucket-config polling as part of its normal bootstrap,
+  # even though actual document reads/writes go over the KV port (11210) -
+  # found by order-service getting stuck restart-looping with "unauthorized
+  # request on route" against 8091 until it was added here alongside
+  # couchbase-init.
+  requiredAuthenticationRefs:
+    - group: policy.linkerd.io
+      kind: MeshTLSAuthentication
+      name: couchbase-admin-clients
+---
+apiVersion: policy.linkerd.io/v1alpha1
+kind: AuthorizationPolicy
+metadata:
+  name: couchbase-query-authz
+  namespace: order-platform
+spec:
+  targetRef:
+    group: policy.linkerd.io
+    kind: Server
+    name: couchbase-query-server
+  requiredAuthenticationRefs:
+    - group: policy.linkerd.io
+      kind: MeshTLSAuthentication
+      name: couchbase-admin-clients
+---
+apiVersion: policy.linkerd.io/v1alpha1
+kind: AuthorizationPolicy
+metadata:
+  name: couchbase-kv-authz
+  namespace: order-platform
+spec:
+  targetRef:
+    group: policy.linkerd.io
+    kind: Server
+    name: couchbase-kv-server
+  requiredAuthenticationRefs:
+    - group: policy.linkerd.io
+      kind: MeshTLSAuthentication
+      name: order-service-clients
+---
+apiVersion: policy.linkerd.io/v1alpha1
+kind: AuthorizationPolicy
+metadata:
+  name: elasticsearch-authz
+  namespace: order-platform
+spec:
+  targetRef:
+    group: policy.linkerd.io
+    kind: Server
+    name: elasticsearch-server
+  requiredAuthenticationRefs:
+    - group: policy.linkerd.io
+      kind: MeshTLSAuthentication
+      name: order-service-clients

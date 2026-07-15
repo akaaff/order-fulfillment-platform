@@ -15,6 +15,7 @@ spec:
       labels:
         app: inventory-service
     spec:
+      serviceAccountName: inventory-service
       containers:
         - name: inventory-service
           image: order-platform/inventory-service:local

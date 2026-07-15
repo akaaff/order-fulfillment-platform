@@ -15,6 +15,7 @@ spec:
       labels:
         app: web-client
     spec:
+      serviceAccountName: web-client
       containers:
         - name: web-client
           image: order-platform/web-client:local

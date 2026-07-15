@@ -15,6 +15,7 @@ spec:
       labels:
         app: ai-support-agent
     spec:
+      serviceAccountName: ai-support-agent
       containers:
         - name: ai-support-agent
           image: order-platform/ai-support-agent:local

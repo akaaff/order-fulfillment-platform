@@ -17,7 +17,10 @@ spec:
     metadata:
       labels:
         app: kafka
+      annotations:
+        config.linkerd.io/opaque-ports: "9092,9093"
     spec:
+      serviceAccountName: kafka
       containers:
         - name: kafka
           image: apache/kafka:4.3.1
@@ -89,6 +92,13 @@ kind: Service
 metadata:
   name: kafka
   namespace: order-platform
+  annotations:
+    # Kafka's wire protocol is binary, not HTTP - without this, Linkerd's
+    # protocol-sniffing adds a per-connection detection delay on both ports
+    # (not just app traffic, but the self-referential controller connection
+    # this pod makes to its own Service - see the headless-Service comment
+    # below, this port is already on the sensitive path once).
+    config.linkerd.io/opaque-ports: "9092,9093"
 spec:
   # Headless (no ClusterIP): a regular Service only routes to Ready pods,
   # which deadlocks here - this single pod plays both broker and KRaft

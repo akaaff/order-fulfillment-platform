@@ -15,6 +15,7 @@ spec:
       labels:
         app: elasticsearch
     spec:
+      serviceAccountName: elasticsearch
       containers:
         - name: elasticsearch
           # Pinned to the version Spring Boot 3.5.16's elasticsearch-java

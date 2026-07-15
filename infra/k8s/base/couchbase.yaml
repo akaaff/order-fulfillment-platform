@@ -14,7 +14,13 @@ spec:
     metadata:
       labels:
         app: couchbase
+      annotations:
+        # Set directly on the pod template (not just the Service) so the
+        # inbound proxy skips protocol-sniffing on this port regardless of
+        # injector-cache/apply-ordering timing between Service and pod.
+        config.linkerd.io/opaque-ports: "11210"
     spec:
+      serviceAccountName: couchbase
       containers:
         - name: couchbase
           image: couchbase:community-7.6.0
@@ -57,6 +63,12 @@ kind: Service
 metadata:
   name: couchbase
   namespace: order-platform
+  annotations:
+    # 8091-8096 are all HTTP-based (mgmt/views/query/search/analytics/eventing
+    # REST APIs), so Linkerd's protocol detection handles them fine. 11210 is
+    # the binary memcached KV protocol - not HTTP, so it must be marked
+    # opaque or every connection pays a protocol-detection delay.
+    config.linkerd.io/opaque-ports: "11210"
 spec:
   selector:
     app: couchbase

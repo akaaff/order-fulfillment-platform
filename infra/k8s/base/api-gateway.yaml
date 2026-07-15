@@ -15,6 +15,7 @@ spec:
       labels:
         app: api-gateway
     spec:
+      serviceAccountName: api-gateway
       containers:
         - name: api-gateway
           image: order-platform/api-gateway:local

@@ -14,7 +14,10 @@ spec:
     metadata:
       labels:
         app: postgres
+      annotations:
+        config.linkerd.io/opaque-ports: "5432"
     spec:
+      serviceAccountName: postgres
       containers:
         - name: postgres
           image: postgres:17.10-bookworm
@@ -57,6 +60,12 @@ kind: Service
 metadata:
   name: postgres
   namespace: order-platform
+  annotations:
+    # Postgres's wire protocol isn't HTTP - explicit here even though 5432
+    # is in Linkerd's own default opaque-ports list, since `linkerd check
+    # --proxy` flags any un-annotated Service regardless of the cluster
+    # default.
+    config.linkerd.io/opaque-ports: "5432"
 spec:
   selector:
     app: postgres
