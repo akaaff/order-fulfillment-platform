@@ -90,11 +90,6 @@ jobs:
   dependency-check:
     name: OWASP Dependency-Check (requires NVD_API_KEY)
     runs-on: ubuntu-latest
-    # Only runs if the repo has an NVD_API_KEY secret configured - see
-    # https://nvd.nist.gov/developers/request-an-api-key. Without a key, the
-    # first NVD database sync is slow enough (1-2+ hours observed locally) to
-    # make this impractical as a required check on every push.
-    if: ${{ secrets.NVD_API_KEY != '' }}
     steps:
       - uses: actions/checkout@v4
 
@@ -104,8 +99,20 @@ jobs:
           java-version: "21"
           cache: maven
 
+      # `secrets` isn't a valid context in a job-level `if:` (GitHub's own
+      # workflow validator rejects it outright, before any job even runs) -
+      # the standard workaround is this env-indirection: map the secret into
+      # a step's own `env:`, then gate that step's `if:` on the env var
+      # instead. Skips cleanly (rather than failing) when NVD_API_KEY isn't
+      # configured - see https://nvd.nist.gov/developers/request-an-api-key.
+      # Without a key, the first NVD database sync is slow enough (1-2+
+      # hours observed locally) to make this impractical as a required
+      # check on every push.
       - name: Run dependency-check
-        run: mvn -B org.owasp:dependency-check-maven:check -Dnvd.api.key=${{ secrets.NVD_API_KEY }}
+        if: ${{ env.NVD_API_KEY != '' }}
+        env:
+          NVD_API_KEY: ${{ secrets.NVD_API_KEY }}
+        run: mvn -B org.owasp:dependency-check-maven:check -Dnvd.api.key=$NVD_API_KEY
 
       - uses: actions/upload-artifact@v4
         if: always()
