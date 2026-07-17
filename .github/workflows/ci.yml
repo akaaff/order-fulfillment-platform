@@ -81,7 +81,7 @@ jobs:
       # deliberately in security-reports/ and SECURITY.md instead of failing
       # CI on every new upstream CVE disclosure.
       - name: Scan image
-        uses: aquasecurity/trivy-action@0.28.0
+        uses: aquasecurity/trivy-action@v0.36.0
         with:
           image-ref: order-platform/api-gateway:ci
           severity: CRITICAL,HIGH
