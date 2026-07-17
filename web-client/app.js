@@ -10,9 +10,15 @@
 const GATEWAY = location.port === "8085" ? "http://localhost:8080" : "";
 const KNOWN_SKUS = ["SKU-WIDGET", "SKU-GADGET", "SKU-GIZMO"];
 
+const ICONS = {
+    check: '<svg viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg"><circle cx="12" cy="12" r="10" stroke="currentColor" stroke-width="1.6"/><path d="m8 12.5 2.5 2.5L16 9.5" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"/></svg>',
+    warning: '<svg viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg"><path d="M12 3 2 20h20L12 3Z" stroke="currentColor" stroke-width="1.6" stroke-linejoin="round"/><path d="M12 10v4M12 17h.01" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"/></svg>',
+};
+
 const els = {
     loginSection: document.getElementById("login-section"),
     appSection: document.getElementById("app-section"),
+    sessionChip: document.getElementById("session-chip"),
     customerSelect: document.getElementById("customer-select"),
     loginBtn: document.getElementById("login-btn"),
     loginStatus: document.getElementById("login-status"),
@@ -48,9 +54,25 @@ function clearSession() {
     sessionStorage.removeItem("customerId");
 }
 
+// Toggles a button between its resting state and a disabled, spinner-plus-text
+// "busy" state - used for every button that fires a fetch, so a slow request
+// (or a slow local Ollama model) reads as "working", not "did my click land?"
+function setBusy(button, busy, busyLabel) {
+    const label = button.querySelector(".btn-label") || button;
+    if (busy) {
+        button.dataset.restingLabel = label.textContent;
+        label.innerHTML = `<span class="spinner"></span> ${busyLabel}`;
+        button.disabled = true;
+    } else {
+        label.textContent = button.dataset.restingLabel || label.textContent;
+        button.disabled = false;
+    }
+}
+
 function showApp() {
     els.loginSection.hidden = true;
     els.appSection.hidden = false;
+    els.sessionChip.hidden = false;
     els.currentCustomer.textContent = getCustomerId();
     if (els.orderLines.children.length === 0) {
         addOrderLine();
@@ -61,6 +83,7 @@ function showApp() {
 function showLogin() {
     els.loginSection.hidden = false;
     els.appSection.hidden = true;
+    els.sessionChip.hidden = true;
     els.loginStatus.textContent = "";
 }
 
@@ -72,7 +95,7 @@ function showLogin() {
 // is correctly scoped to whichever customer is actually logged in.
 function resetSessionUiState() {
     els.chatLog.innerHTML = "";
-    els.orderResult.textContent = "";
+    els.orderResult.innerHTML = "";
     els.ordersTableBody.innerHTML = "";
 }
 
@@ -96,24 +119,28 @@ async function authedFetch(path, options = {}) {
 
 async function login() {
     const customerId = els.customerSelect.value;
-    els.loginStatus.textContent = "Logging in...";
-    els.loginStatus.className = "status";
+    els.loginStatus.textContent = "";
+    setBusy(els.loginBtn, true, "Logging in...");
 
-    const response = await fetch(`${GATEWAY}/auth/login`, {
-        method: "POST",
-        headers: {"Content-Type": "application/json"},
-        body: JSON.stringify({customerId}),
-    });
+    try {
+        const response = await fetch(`${GATEWAY}/auth/login`, {
+            method: "POST",
+            headers: {"Content-Type": "application/json"},
+            body: JSON.stringify({customerId}),
+        });
 
-    if (!response.ok) {
-        els.loginStatus.textContent = `Login failed (HTTP ${response.status}). Unknown demo customer?`;
-        els.loginStatus.className = "status error";
-        return;
+        if (!response.ok) {
+            els.loginStatus.textContent = `Login failed (HTTP ${response.status}). Unknown demo customer?`;
+            els.loginStatus.className = "status error";
+            return;
+        }
+
+        const data = await response.json();
+        setSession(data.token, data.customerId);
+        showApp();
+    } finally {
+        setBusy(els.loginBtn, false);
     }
-
-    const data = await response.json();
-    setSession(data.token, data.customerId);
-    showApp();
 }
 
 function logout() {
@@ -143,7 +170,7 @@ function addOrderLine() {
 
     const removeBtn = document.createElement("button");
     removeBtn.type = "button";
-    removeBtn.className = "secondary";
+    removeBtn.className = "btn btn-ghost btn-sm";
     removeBtn.textContent = "Remove";
     removeBtn.addEventListener("click", () => row.remove());
 
@@ -158,14 +185,27 @@ function collectOrderLines() {
     }));
 }
 
+function renderOrderBanner(kind, title, detailHtml, raw) {
+    const icon = kind === "success" ? ICONS.check : ICONS.warning;
+    els.orderResult.innerHTML = `
+        <div class="result-banner ${kind}">
+            <span class="result-icon">${icon}</span>
+            <div class="result-body">
+                <div class="result-title${kind === "error" ? " error-text" : ""}">${title}</div>
+                <div class="result-detail">${detailHtml}</div>
+                ${raw ? `<details class="result-raw"><summary>View raw response</summary><pre>${raw}</pre></details>` : ""}
+            </div>
+        </div>`;
+}
+
 async function placeOrder() {
     const lines = collectOrderLines();
     if (lines.length === 0) {
-        els.orderResult.textContent = "Add at least one line first.";
+        renderOrderBanner("error", "Nothing to submit", "Add at least one order line first.");
         return;
     }
 
-    els.orderResult.textContent = "Placing order...";
+    setBusy(els.submitOrderBtn, true, "Placing order...");
     try {
         const response = await authedFetch("/api/orders", {
             method: "POST",
@@ -173,19 +213,46 @@ async function placeOrder() {
             body: JSON.stringify({lines}),
         });
         const data = await response.json();
-        els.orderResult.textContent = JSON.stringify(data, null, 2);
+
+        if (!response.ok) {
+            renderOrderBanner("error", `Order rejected (HTTP ${response.status})`, data.error || data.message || "See raw response for details.", JSON.stringify(data, null, 2));
+            return;
+        }
+
+        const skuSummary = data.lines.map((l) => `${l.quantity}× ${l.sku}`).join(", ");
+        renderOrderBanner(
+            "success",
+            "Order placed",
+            `<code>${data.orderId}</code> - ${skuSummary} - status <span class="badge ${data.status}">${data.status}</span>`,
+            JSON.stringify(data, null, 2),
+        );
         refreshOrders();
     } catch (e) {
         // authedFetch already surfaced a 401 to the login screen.
+    } finally {
+        setBusy(els.submitOrderBtn, false);
     }
 }
 
 function renderOrdersTable(orders) {
     els.ordersTableBody.innerHTML = "";
+
+    if (orders.length === 0) {
+        const tr = document.createElement("tr");
+        tr.className = "empty-row";
+        const td = document.createElement("td");
+        td.colSpan = 5;
+        td.textContent = "No orders yet - place one above to see it here.";
+        tr.appendChild(td);
+        els.ordersTableBody.appendChild(tr);
+        return;
+    }
+
     orders.forEach((order) => {
         const tr = document.createElement("tr");
 
         const idCell = document.createElement("td");
+        idCell.className = "order-id-cell";
         idCell.textContent = order.orderId;
 
         const statusCell = document.createElement("td");
@@ -201,7 +268,7 @@ function renderOrdersTable(orders) {
         createdCell.textContent = new Date(order.createdAt).toLocaleString();
 
         const reasonCell = document.createElement("td");
-        reasonCell.textContent = order.cancellationReason || "";
+        reasonCell.textContent = order.cancellationReason || "—";
 
         tr.append(idCell, statusCell, skuCell, createdCell, reasonCell);
         els.ordersTableBody.appendChild(tr);
@@ -226,6 +293,16 @@ function appendChatMessage(who, text) {
     bubble.textContent = text;
     els.chatLog.appendChild(bubble);
     els.chatLog.scrollTop = els.chatLog.scrollHeight;
+    return bubble;
+}
+
+function appendThinkingBubble() {
+    const bubble = document.createElement("div");
+    bubble.className = "chat-message assistant thinking";
+    bubble.innerHTML = '<span class="spinner"></span> Thinking...';
+    els.chatLog.appendChild(bubble);
+    els.chatLog.scrollTop = els.chatLog.scrollHeight;
+    return bubble;
 }
 
 async function sendChatMessage() {
@@ -235,6 +312,8 @@ async function sendChatMessage() {
     }
     appendChatMessage("You", question);
     els.chatInput.value = "";
+    els.chatSendBtn.disabled = true;
+    const thinkingBubble = appendThinkingBubble();
 
     try {
         const response = await authedFetch("/api/assistant/ask", {
@@ -242,6 +321,7 @@ async function sendChatMessage() {
             headers: {"Content-Type": "application/json"},
             body: JSON.stringify({question}),
         });
+        thinkingBubble.remove();
         if (!response.ok) {
             appendChatMessage("Assistant", `(error ${response.status} - the assistant may be unavailable)`);
             return;
@@ -249,7 +329,10 @@ async function sendChatMessage() {
         const data = await response.json();
         appendChatMessage("Assistant", data.answer);
     } catch (e) {
+        thinkingBubble.remove();
         // authedFetch already surfaced a 401 to the login screen.
+    } finally {
+        els.chatSendBtn.disabled = false;
     }
 }
 

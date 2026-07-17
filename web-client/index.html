@@ -3,82 +3,119 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Order Fulfillment Platform - Demo</title>
+    <title>Order Fulfillment Platform</title>
+    <link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24'%3E%3Ctext y='19' font-size='20'%3E%F0%9F%93%A6%3C/text%3E%3C/svg%3E">
     <link rel="stylesheet" href="style.css">
 </head>
 <body>
-<header>
-    <h1>Order Fulfillment Platform</h1>
-    <p class="subtitle">Demo client - talks only to the api-gateway, never directly to a backend service.</p>
-</header>
-
-<section id="login-section" class="card">
-    <h2>Log in</h2>
-    <p class="hint">Stub auth - pick one of the seeded demo customers. No password, see CLAUDE.md.</p>
-    <label>
-        Demo customer
-        <select id="customer-select">
-            <option value="cust-001">cust-001</option>
-            <option value="cust-002">cust-002</option>
-            <option value="cust-003">cust-003</option>
-            <option value="cust-004">cust-004</option>
-            <option value="cust-005">cust-005</option>
-        </select>
-    </label>
-    <button id="login-btn">Log in</button>
-    <p id="login-status" class="status"></p>
-</section>
-
-<section id="app-section" hidden>
-    <p class="session-bar">
-        Logged in as <strong id="current-customer"></strong>
-        <button id="logout-btn">Log out</button>
-    </p>
-
-    <section class="card">
-        <h2>Place an order</h2>
-        <div id="order-lines"></div>
-        <button id="add-line-btn" type="button">+ Add line</button>
-        <button id="submit-order-btn" type="button">Place order</button>
-        <pre id="order-result" class="result"></pre>
-    </section>
-
-    <section class="card">
-        <h2>My orders</h2>
-        <label>
-            Status filter
-            <select id="status-filter">
-                <option value="">All</option>
-                <option value="PENDING">Pending</option>
-                <option value="CONFIRMED">Confirmed</option>
-                <option value="CANCELLED">Cancelled</option>
-            </select>
-        </label>
-        <button id="refresh-orders-btn" type="button">Refresh</button>
-        <table id="orders-table">
-            <thead>
-            <tr>
-                <th>Order ID</th>
-                <th>Status</th>
-                <th>SKUs</th>
-                <th>Created</th>
-                <th>Note</th>
-            </tr>
-            </thead>
-            <tbody></tbody>
-        </table>
-    </section>
-
-    <section class="card">
-        <h2>Ask the assistant</h2>
-        <p class="hint">Read-only: can look up and search your own orders. Can't cancel, refund, or modify anything.</p>
-        <div id="chat-log"></div>
-        <div class="chat-input-row">
-            <input id="chat-input" type="text" placeholder="e.g. What's the status of my last order?">
-            <button id="chat-send-btn" type="button">Send</button>
+<div class="app-shell">
+    <nav class="topbar">
+        <div class="brand">
+            <svg class="brand-mark" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg" aria-hidden="true">
+                <path d="M12 2.5 3.5 7v10L12 21.5 20.5 17V7L12 2.5Z" stroke="currentColor" stroke-width="1.6" stroke-linejoin="round"/>
+                <path d="M3.5 7 12 11.5 20.5 7M12 11.5V21.5" stroke="currentColor" stroke-width="1.6" stroke-linejoin="round"/>
+            </svg>
+            <div class="brand-text">
+                <span class="brand-title">Order Fulfillment</span>
+                <span class="brand-subtitle">Demo console</span>
+            </div>
         </div>
-    </section>
-</section>
+        <div id="session-chip" class="session-chip" hidden>
+            <span class="customer-pill">
+                <span class="customer-dot" aria-hidden="true"></span>
+                <span id="current-customer"></span>
+            </span>
+            <button id="logout-btn" class="btn btn-ghost btn-sm" type="button">Log out</button>
+        </div>
+    </nav>
+
+    <main class="content">
+        <section id="login-section" class="login-wrap">
+            <div class="card login-card">
+                <h2>Welcome back</h2>
+                <p class="hint">Stub auth - pick one of the seeded demo customers. No password, see CLAUDE.md.</p>
+                <label>
+                    Demo customer
+                    <select id="customer-select">
+                        <option value="cust-001">cust-001</option>
+                        <option value="cust-002">cust-002</option>
+                        <option value="cust-003">cust-003</option>
+                        <option value="cust-004">cust-004</option>
+                        <option value="cust-005">cust-005</option>
+                    </select>
+                </label>
+                <button id="login-btn" class="btn btn-primary btn-block" type="button">
+                    <span class="btn-label">Log in</span>
+                </button>
+                <p id="login-status" class="status" role="status"></p>
+            </div>
+        </section>
+
+        <section id="app-section" class="layout-grid" hidden>
+            <div class="main-col">
+                <section class="card">
+                    <div class="card-header-row">
+                        <h2>Place an order</h2>
+                    </div>
+                    <div id="order-lines"></div>
+                    <div class="actions">
+                        <button id="add-line-btn" class="btn btn-ghost btn-sm" type="button">+ Add line</button>
+                        <button id="submit-order-btn" class="btn btn-primary" type="button">
+                            <span class="btn-label">Place order</span>
+                        </button>
+                    </div>
+                    <div id="order-result" class="order-result" aria-live="polite"></div>
+                </section>
+
+                <section class="card">
+                    <div class="card-header-row">
+                        <h2>My orders</h2>
+                        <div class="filter-row">
+                            <select id="status-filter">
+                                <option value="">All statuses</option>
+                                <option value="PENDING">Pending</option>
+                                <option value="CONFIRMED">Confirmed</option>
+                                <option value="CANCELLED">Cancelled</option>
+                            </select>
+                            <button id="refresh-orders-btn" class="btn btn-ghost btn-sm" type="button">
+                                <svg class="icon-refresh" viewBox="0 0 24 24" fill="none" aria-hidden="true">
+                                    <path d="M20 11A8 8 0 1 0 18.5 15.5M20 11V5M20 11H14" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"/>
+                                </svg>
+                                Refresh
+                            </button>
+                        </div>
+                    </div>
+                    <div class="table-wrap">
+                        <table id="orders-table">
+                            <thead>
+                            <tr>
+                                <th>Order ID</th>
+                                <th>Status</th>
+                                <th>SKUs</th>
+                                <th>Created</th>
+                                <th>Note</th>
+                            </tr>
+                            </thead>
+                            <tbody></tbody>
+                        </table>
+                    </div>
+                </section>
+            </div>
+
+            <aside class="side-col">
+                <section class="card chat-card">
+                    <h2>Ask the assistant</h2>
+                    <p class="hint">Read-only: can look up and search your own orders. Can't cancel, refund, or modify anything.</p>
+                    <div id="chat-log"></div>
+                    <div class="chat-input-row">
+                        <input id="chat-input" type="text" placeholder="e.g. What's the status of my last order?">
+                        <button id="chat-send-btn" class="btn btn-primary btn-sm" type="button">Send</button>
+                    </div>
+                </section>
+            </aside>
+        </section>
+    </main>
+</div>
 
 <script src="app.js"></script>
 </body>
