@@ -1,0 +1,114 @@
+name: CI
+
+on:
+  push:
+    branches: [master]
+  pull_request:
+    branches: [master]
+
+jobs:
+  build-and-test:
+    name: Build and unit test
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: "21"
+          cache: maven
+
+      # dependency-check.skip: the OWASP plugin is bound to `verify`, and its
+      # first-run NVD database sync without an API key can take hours (this
+      # bit us hard during local development - see SECURITY.md). It runs as
+      # its own gated job below instead, so this job stays fast and doesn't
+      # depend on NVD being reachable/fast.
+      - name: Build and test (full reactor)
+        run: mvn -B -Ddependency-check.skip=true test
+
+  docker-build:
+    name: Build all service images
+    runs-on: ubuntu-latest
+    strategy:
+      matrix:
+        service: [api-gateway, order-service, inventory-service, notification-service, ai-support-agent]
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: docker/setup-buildx-action@v3
+
+      - name: Build ${{ matrix.service }}
+        uses: docker/build-push-action@v6
+        with:
+          context: .
+          target: ${{ matrix.service }}
+          push: false
+          tags: order-platform/${{ matrix.service }}:ci
+          cache-from: type=gha,scope=${{ matrix.service }}
+          cache-to: type=gha,mode=max,scope=${{ matrix.service }}
+
+      - name: Build web-client
+        if: matrix.service == 'api-gateway'
+        uses: docker/build-push-action@v6
+        with:
+          context: web-client
+          push: false
+          tags: order-platform/web-client:ci
+          cache-from: type=gha,scope=web-client
+          cache-to: type=gha,mode=max,scope=web-client
+
+  trivy-scan:
+    name: Trivy vulnerability scan
+    runs-on: ubuntu-latest
+    needs: docker-build
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: docker/setup-buildx-action@v3
+
+      - name: Build api-gateway image for scanning
+        uses: docker/build-push-action@v6
+        with:
+          context: .
+          target: api-gateway
+          push: false
+          load: true
+          tags: order-platform/api-gateway:ci
+          cache-from: type=gha,scope=api-gateway
+
+      # Informational, not a merge gate - severity/CVE counts are tracked
+      # deliberately in security-reports/ and SECURITY.md instead of failing
+      # CI on every new upstream CVE disclosure.
+      - name: Scan image
+        uses: aquasecurity/trivy-action@0.28.0
+        with:
+          image-ref: order-platform/api-gateway:ci
+          severity: CRITICAL,HIGH
+          exit-code: "0"
+
+  dependency-check:
+    name: OWASP Dependency-Check (requires NVD_API_KEY)
+    runs-on: ubuntu-latest
+    # Only runs if the repo has an NVD_API_KEY secret configured - see
+    # https://nvd.nist.gov/developers/request-an-api-key. Without a key, the
+    # first NVD database sync is slow enough (1-2+ hours observed locally) to
+    # make this impractical as a required check on every push.
+    if: ${{ secrets.NVD_API_KEY != '' }}
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: "21"
+          cache: maven
+
+      - name: Run dependency-check
+        run: mvn -B org.owasp:dependency-check-maven:check -Dnvd.api.key=${{ secrets.NVD_API_KEY }}
+
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: dependency-check-report
+          path: "**/target/dependency-check-report.html"
