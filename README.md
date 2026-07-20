@@ -13,7 +13,7 @@ not just the parts that worked on the first try.
 
 ## Demo
 
-A ~70-second walkthrough recorded straight off the running minikube deployment — real login, a real
+A ~55-second walkthrough recorded straight off the running minikube deployment — real login, a real
 order going through the Kafka pipeline to CONFIRMED, a real Ollama response from the AI assistant,
 and the live Grafana dashboard:
 
