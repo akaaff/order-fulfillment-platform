@@ -13,8 +13,14 @@ not just the parts that worked on the first try.
 
 ## Demo
 
-Screenshots below are from a live run against the actual minikube deployment — real Kafka events,
-real Ollama responses, real Prometheus metrics, not mocked data.
+A ~70-second walkthrough recorded straight off the running minikube deployment — real login, a real
+order going through the Kafka pipeline to CONFIRMED, a real Ollama response from the AI assistant,
+and the live Grafana dashboard:
+
+https://github.com/user-attachments/assets/9b3584ce-35de-4760-96b0-334a033a5f0f
+
+Screenshots below are from that same live run — real Kafka events, real Ollama responses, real
+Prometheus metrics, not mocked data.
 
 **Login** — a stub auth screen backed by 5 seeded demo customers (no password; see `CLAUDE.md` for
 why that's called out explicitly rather than faked as more than it is):
