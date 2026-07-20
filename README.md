@@ -17,7 +17,7 @@ A ~70-second walkthrough recorded straight off the running minikube deployment â
 order going through the Kafka pipeline to CONFIRMED, a real Ollama response from the AI assistant,
 and the live Grafana dashboard:
 
-https://github.com/user-attachments/assets/9b3584ce-35de-4760-96b0-334a033a5f0f
+https://github.com/user-attachments/assets/dd4dc2e2-881e-452b-9cc5-d9f2e2cade5c
 
 Screenshots below are from that same live run â€” real Kafka events, real Ollama responses, real
 Prometheus metrics, not mocked data.
