@@ -11,6 +11,35 @@ See [`DECISIONS.md`](DECISIONS.md) for the architecture decision records and
 the running engineering log — every non-obvious gotcha hit while building this is documented there,
 not just the parts that worked on the first try.
 
+## Demo
+
+Screenshots below are from a live run against the actual minikube deployment — real Kafka events,
+real Ollama responses, real Prometheus metrics, not mocked data.
+
+**Login** — a stub auth screen backed by 5 seeded demo customers (no password; see `CLAUDE.md` for
+why that's called out explicitly rather than faked as more than it is):
+
+![Login screen](docs/screenshots/login.png)
+
+**Order history** — every order this customer has placed, backed by the Elasticsearch-indexed
+search endpoint (`GET /orders/search`, scoped to the authenticated JWT's customer, never a
+client-supplied ID):
+
+![Order history](docs/screenshots/order-history.png)
+
+**Placing an order, then asking the AI assistant about it** — the order goes through the full
+`order.created → inventory.reserved → order.confirmed` Kafka flow in the background; the assistant
+(a local Ollama model, tool-calling into order-service, scoped to the caller's own orders only)
+correctly distinguishes between the two orders it looked up:
+
+![Order placement and AI assistant](docs/screenshots/ai-assistant-and-orders.png)
+
+**Grafana dashboard** — Prometheus scraping all 5 services' `/actuator/prometheus` endpoints,
+visualized via a declaratively-provisioned dashboard (service status, HTTP rate/latency, JVM heap,
+Kafka consumption):
+
+![Grafana dashboard](docs/screenshots/grafana-dashboard.png)
+
 ## Architecture
 
 ```mermaid
