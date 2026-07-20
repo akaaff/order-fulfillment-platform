@@ -54,6 +54,46 @@ spec:
             matchLabels:
               app: api-gateway
 ---
+# Every app service's own /actuator/prometheus endpoint - a second,
+# additive ingress source alongside allow-gateway-to-backends above (a pod
+# is allowed in if ANY matching NetworkPolicy permits it, so this doesn't
+# need to touch that rule at all).
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: allow-prometheus-to-app-services
+  namespace: order-platform
+spec:
+  podSelector:
+    matchExpressions:
+      - key: app
+        operator: In
+        values: [api-gateway, order-service, inventory-service, notification-service, ai-support-agent]
+  policyTypes:
+    - Ingress
+  ingress:
+    - from:
+        - podSelector:
+            matchLabels:
+              app: prometheus
+---
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: allow-grafana-to-prometheus
+  namespace: order-platform
+spec:
+  podSelector:
+    matchLabels:
+      app: prometheus
+  policyTypes:
+    - Ingress
+  ingress:
+    - from:
+        - podSelector:
+            matchLabels:
+              app: grafana
+---
 # order-service is reachable from api-gateway (via the rule above) and
 # additionally from ai-support-agent (its tool calls bypass the gateway -
 # see CLAUDE.md's token-forwarding note).

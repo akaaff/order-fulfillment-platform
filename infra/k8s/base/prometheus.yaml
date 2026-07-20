@@ -1,0 +1,124 @@
+# Scrapes the 5 app services' /actuator/prometheus endpoints directly by
+# their Service DNS name (static_configs, not Kubernetes service-discovery) -
+# with only 5 fixed targets, kubernetes_sd_configs would just add RBAC
+# surface (Prometheus would need permission to list pods/services via the
+# K8s API) for no real benefit at this scale.
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: prometheus-config
+  namespace: order-platform
+data:
+  prometheus.yml: |
+    global:
+      scrape_interval: 15s
+      evaluation_interval: 15s
+
+    scrape_configs:
+      - job_name: api-gateway
+        metrics_path: /actuator/prometheus
+        static_configs:
+          - targets: ["api-gateway:8080"]
+      - job_name: order-service
+        metrics_path: /actuator/prometheus
+        static_configs:
+          - targets: ["order-service:8081"]
+      - job_name: inventory-service
+        metrics_path: /actuator/prometheus
+        static_configs:
+          - targets: ["inventory-service:8082"]
+      - job_name: notification-service
+        metrics_path: /actuator/prometheus
+        static_configs:
+          - targets: ["notification-service:8083"]
+      - job_name: ai-support-agent
+        metrics_path: /actuator/prometheus
+        static_configs:
+          - targets: ["ai-support-agent:8084"]
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: prometheus
+  namespace: order-platform
+  labels:
+    app: prometheus
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: prometheus
+  template:
+    metadata:
+      labels:
+        app: prometheus
+    spec:
+      serviceAccountName: prometheus
+      # The official image already runs as the "nobody" user (uid 65534) by
+      # default - unlike Postgres/Couchbase, nothing here needs a root-owned
+      # bootstrap step, so full hardening is safe (see api-gateway.yaml for
+      # why this pair of securityContext blocks exists on every workload
+      # that supports it).
+      securityContext:
+        runAsNonRoot: true
+        runAsUser: 65534
+        runAsGroup: 65534
+      containers:
+        - name: prometheus
+          image: prom/prometheus:v3.2.1
+          args:
+            - --config.file=/etc/prometheus/prometheus.yml
+            - --storage.tsdb.path=/prometheus
+            # A short retention window on purpose - this is a demo dashboard,
+            # not a production TSDB, and a small retention keeps memory/disk
+            # bounded on an already resource-constrained single-node cluster.
+            - --storage.tsdb.retention.time=6h
+          ports:
+            - containerPort: 9090
+          securityContext:
+            allowPrivilegeEscalation: false
+            readOnlyRootFilesystem: true
+            capabilities:
+              drop: ["ALL"]
+          resources:
+            requests:
+              memory: 128Mi
+              cpu: 50m
+            limits:
+              memory: 384Mi
+              cpu: 300m
+          readinessProbe:
+            httpGet:
+              path: /-/ready
+              port: 9090
+            initialDelaySeconds: 5
+            periodSeconds: 10
+          livenessProbe:
+            httpGet:
+              path: /-/healthy
+              port: 9090
+            initialDelaySeconds: 15
+            periodSeconds: 20
+          volumeMounts:
+            - name: config
+              mountPath: /etc/prometheus
+            - name: data
+              mountPath: /prometheus
+      volumes:
+        - name: config
+          configMap:
+            name: prometheus-config
+        - name: data
+          emptyDir: {}
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: prometheus
+  namespace: order-platform
+spec:
+  selector:
+    app: prometheus
+  ports:
+    - port: 9090
+      targetPort: 9090

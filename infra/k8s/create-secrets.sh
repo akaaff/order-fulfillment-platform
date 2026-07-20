@@ -28,4 +28,12 @@ kubectl create secret generic couchbase-credentials -n "$NAMESPACE" \
   --from-literal=COUCHBASE_ADMIN_PASSWORD=devpassword \
   --dry-run=client -o yaml | kubectl apply -f -
 
+# Key names match Grafana's own env var names exactly - grafana.yaml wires
+# this Secret in via envFrom, which maps secret keys straight to env var
+# names, not individual valueFrom.secretKeyRef entries.
+kubectl create secret generic grafana-admin-credentials -n "$NAMESPACE" \
+  --from-literal=GF_SECURITY_ADMIN_USER=admin \
+  --from-literal=GF_SECURITY_ADMIN_PASSWORD=devpassword \
+  --dry-run=client -o yaml | kubectl apply -f -
+
 echo "Secrets created/updated in namespace $NAMESPACE."

@@ -390,6 +390,53 @@ every Couchbase pod recreation, or order-service will fail SASL authentication a
 bucket/user that no longer exists. This bit us three separate times while rolling out the mesh and
 its policies — worth remembering before any future change that touches Couchbase's Deployment spec.
 
+## Observability (Prometheus + Grafana)
+
+Added late (post-Day 10) for demo purposes, but wired as a permanent part of the stack, not a
+throwaway — provisioned declaratively (ConfigMap-mounted YAML/JSON), non-root, resource-limited,
+and covered by the same NetworkPolicy/Linkerd `AuthorizationPolicy` model as every other workload.
+
+**Scraping is static-config, not Kubernetes service-discovery**: `infra/k8s/base/prometheus.yaml`'s
+`prometheus.yml` hardcodes 5 fixed `scrape_configs` targets (one per app service,
+`/actuator/prometheus`) rather than using `kubernetes_sd_configs` — there are only 5 known targets
+and service-discovery would need extra RBAC (list/watch on pods) for no real benefit at this scale.
+
+**`/actuator/prometheus` needed explicit exposure + security allowlisting in every service**: adding
+`micrometer-registry-prometheus` and `management.endpoints.web.exposure.include: ...,prometheus`
+wasn't enough on its own — `order-service` and `ai-support-agent`'s Spring Security config, and
+api-gateway's `GatewaySecurityConfig`, only `permitAll()`'d `/actuator/health` and `/actuator/info`;
+`/actuator/prometheus` 401'd until added to the same allowlist. `inventory-service` and
+`notification-service` have no Spring Security dependency at all, so nothing needed there.
+
+**Grafana provisioning is declarative, not UI-clicked**: datasource (`grafana-datasources` ConfigMap)
+and dashboard (`grafana-dashboard.json`, mounted via Kustomize's `configMapGenerator` so edits get a
+fresh hash-suffixed ConfigMap and an automatic Deployment volume-reference update + rollout) are both
+files in git — the dashboard a reviewer sees is exactly the JSON in the repo, not manually-clicked
+state that would be lost on pod recreation. `GF_AUTH_ANONYMOUS_ENABLED=true` (Viewer role) so the
+demo dashboard is viewable with zero login friction.
+
+**Spring Cloud Gateway's proxied-request metrics live under a separate metric family**:
+`http_server_requests_seconds_*` only covers requests api-gateway handles directly (e.g. its own
+`/auth/login` controller) — requests it *proxies* through to backends are recorded under
+`spring_cloud_gateway_requests_seconds_*` (tagged by `routeId`) instead. The dashboard's "HTTP
+request rate" panel alone would show api-gateway near-zero despite real traffic; a dedicated
+"Gateway proxied requests, by route" panel using the correct metric family covers this.
+
+**Kafka consumption-rate metric name**: `kafka_consumer_fetch_manager_records_consumed_total`, not
+the more guessable `kafka_consumer_records_consumed_total` (doesn't exist) — found by grepping a
+running service's actual `/actuator/prometheus` output for `kafka_*_total` rather than assuming.
+
+**Prometheus's own inbound is deliberately NOT given a restrictive `AuthorizationPolicy`** — same
+reasoning as api-gateway/web-client: it's reached via `kubectl port-forward` for demo viewing, which
+hits the same iptables inbound interception as any other connection, so a restrictive policy would
+block the demo path itself. Only Grafana (a normal in-mesh Service call) is authorized as a caller.
+
+**Real memory usage stayed well within configured limits after adding both** (checked via
+`eval $(minikube docker-env) && docker stats --no-stream`): grafana ~102/256MiB, prometheus
+~67/384MiB — no OOM, no tweaking needed. Node-level configured-limit allocation is tight (~89%)
+but that's pre-existing (Kafka in particular already ran close to its own limit before this
+addition), not something Prometheus/Grafana caused.
+
 ## Testing, dependency scanning, and NetworkPolicy enforcement (Day 9)
 
 **Unit tests**: 58 JUnit5/Mockito tests across the four modules with meaningful logic

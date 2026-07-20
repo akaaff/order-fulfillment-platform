@@ -27,7 +27,11 @@ public class SecurityConfig {
                 // Stateless, token-based API - no session/cookie for CSRF to protect.
                 .csrf(AbstractHttpConfigurer::disable)
                 .authorizeHttpRequests(auth -> auth
-                        .requestMatchers("/actuator/health", "/actuator/info").permitAll()
+                        // /actuator/prometheus is permitAll here for the same reason
+                        // health/info are: it's scraped by Prometheus (a meshed,
+                        // NetworkPolicy/AuthorizationPolicy-restricted caller, not an
+                        // arbitrary client), not something a customer JWT should gate.
+                        .requestMatchers("/actuator/health", "/actuator/info", "/actuator/prometheus").permitAll()
                         .anyRequest().authenticated()
                 )
                 .oauth2ResourceServer(oauth2 -> oauth2

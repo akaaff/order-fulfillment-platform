@@ -151,6 +151,25 @@ spec:
       app: elasticsearch
   port: 9200
   proxyProtocol: HTTP/1
+---
+# Prometheus itself is deliberately NOT given a Server/AuthorizationPolicy
+# here (unlike this one protecting it) - it's viewed via kubectl
+# port-forward for the demo, and port-forwarded traffic hits the pod's
+# inbound proxy the same as any other connection, so a restrictive
+# AuthorizationPolicy on Prometheus's own inbound would block that just as
+# it would an unmeshed caller. Only grafana, which reaches Prometheus
+# through its Service (a normal meshed hop), needs to be authorized here.
+apiVersion: policy.linkerd.io/v1beta3
+kind: Server
+metadata:
+  name: prometheus-server
+  namespace: order-platform
+spec:
+  podSelector:
+    matchLabels:
+      app: prometheus
+  port: 9090
+  proxyProtocol: HTTP/1
 
 # --- MeshTLSAuthentications: named groups of caller identities ---
 
@@ -164,6 +183,13 @@ spec:
   identityRefs:
     - kind: ServiceAccount
       name: api-gateway
+      namespace: order-platform
+    # Prometheus scrapes this Server's /actuator/prometheus endpoint - added
+    # here rather than a separate MeshTLSAuthentication since every Server
+    # using this group (inventory-service, notification-service,
+    # ai-support-agent) needs exactly the same two callers.
+    - kind: ServiceAccount
+      name: prometheus
       namespace: order-platform
 ---
 # NOTE: an AuthorizationPolicy's requiredAuthenticationRefs list is AND'd
@@ -184,6 +210,9 @@ spec:
       namespace: order-platform
     - kind: ServiceAccount
       name: ai-support-agent
+      namespace: order-platform
+    - kind: ServiceAccount
+      name: prometheus
       namespace: order-platform
 ---
 apiVersion: policy.linkerd.io/v1alpha1
@@ -249,6 +278,17 @@ spec:
       namespace: order-platform
     - kind: ServiceAccount
       name: kafka
+      namespace: order-platform
+---
+apiVersion: policy.linkerd.io/v1alpha1
+kind: MeshTLSAuthentication
+metadata:
+  name: grafana-clients
+  namespace: order-platform
+spec:
+  identityRefs:
+    - kind: ServiceAccount
+      name: grafana
       namespace: order-platform
 
 # --- AuthorizationPolicies: bind each Server to its allowed callers ---
@@ -424,3 +464,18 @@ spec:
     - group: policy.linkerd.io
       kind: MeshTLSAuthentication
       name: order-service-clients
+---
+apiVersion: policy.linkerd.io/v1alpha1
+kind: AuthorizationPolicy
+metadata:
+  name: prometheus-authz
+  namespace: order-platform
+spec:
+  targetRef:
+    group: policy.linkerd.io
+    kind: Server
+    name: prometheus-server
+  requiredAuthenticationRefs:
+    - group: policy.linkerd.io
+      kind: MeshTLSAuthentication
+      name: grafana-clients

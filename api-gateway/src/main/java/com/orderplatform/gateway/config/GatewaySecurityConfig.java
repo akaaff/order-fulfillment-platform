@@ -43,7 +43,9 @@ public class GatewaySecurityConfig {
                         // route fails preflight and never even sends the real request.
                         .pathMatchers(HttpMethod.OPTIONS, "/**").permitAll()
                         .pathMatchers("/auth/login").permitAll()
-                        .pathMatchers("/actuator/health", "/actuator/info").permitAll()
+                        // See order-service's SecurityConfig for why /actuator/prometheus
+                        // is permitAll alongside health/info.
+                        .pathMatchers("/actuator/health", "/actuator/info", "/actuator/prometheus").permitAll()
                         .anyExchange().authenticated()
                 )
                 .oauth2ResourceServer(oauth2 -> oauth2.jwt(Customizer.withDefaults()))

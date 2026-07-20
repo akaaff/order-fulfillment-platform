@@ -17,13 +17,18 @@ resources:
   - notification-service.yaml
   - ai-support-agent.yaml
   - web-client.yaml
+  - prometheus.yaml
+  - grafana.yaml
   - ingress.yaml
   - networkpolicies.yaml
   - authorization-policies.yaml
 
-# Generated from the single source-of-truth script also used by
-# infra/docker-compose.yml, so the two environments can't drift apart.
 configMapGenerator:
+  # Generated from the single source-of-truth script also used by
+  # infra/docker-compose.yml, so the two environments can't drift apart.
   - name: couchbase-init-script
     files:
       - couchbase-init.sh
+  - name: grafana-dashboard
+    files:
+      - grafana-dashboard.json
